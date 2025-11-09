@@ -31,7 +31,7 @@ if [[ -f "$PIDFILE" ]]; then
   fi
 fi
 
-nohup gpioset --mode=wait "$CHIP" "${LINE}=${VAL}" >/dev/null 2>&1 &
+nohup gpioset --mode=wait "$CHIP" "${LINE}=${VAL}" >> "$STATE_BASE/${CHIP}_${LINE}.log" 2>&1 &
 PID=$!
 
 # Record metadata with ISO 8601 timestamp (local time zone)
@@ -45,12 +45,16 @@ PID=$!
 
 echo "$PID" >"$PIDFILE"
 
-sleep 0.05
-if ! kill -0 "$PID" 2>/dev/null; then
-  echo "Failed to start holder for ${CHIP}:${LINE}."
-  rm -f "$PIDFILE" "$META"
-  exit 2
-fi
+sleep 0.2
+for i in {1..5}; do
+  if ! kill -0 "$PID" 2>/dev/null; then
+    echo "Failed to start holder for ${CHIP}:${LINE}."
+    cat "$STATE_BASE/${CHIP}_${LINE}.log" 2>/dev/null
+    rm -f "$PIDFILE" "$META"
+    exit 2
+  fi
+  sleep 0.1
+done
 
 echo "Holding ${CHIP}:${LINE}=${VAL} (PID $PID) since $(grep '^started=' "$META" | cut -d= -f2-)"
 echo "$(date --iso-8601=seconds) HOLD ${CHIP}:${LINE}=${VAL} PID=$PID" >> "$HOME/gpio.log"

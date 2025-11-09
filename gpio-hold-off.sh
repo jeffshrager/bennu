@@ -46,7 +46,7 @@ if [[ -f "$META" ]]; then
 fi
 echo "$(date --iso-8601=seconds) RELEASE ${CHIP}:${LINE}" >> "$HOME/gpio.log"
 
-rm -f "$PIDFILE"
+rm -f "$PIDFILE" "$META"
 
 # Optional: actively pull low
 if [[ "$EXTRA" == "--drive-low" ]]; then
