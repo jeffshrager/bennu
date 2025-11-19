@@ -9,6 +9,8 @@ from logging.handlers import RotatingFileHandler
 
 import RPi.GPIO as GPIO
 
+from adc_sensors import read_windspeed, read_current
+
 # ----------------------------------------------------------------------
 # CONFIGURATION BLOCK (edit these as needed)
 # ----------------------------------------------------------------------
@@ -220,42 +222,6 @@ def read_methane():
     except Exception as e:
         logging.error("Error reading methane sensor: %s", e)
         return None
-
-
-def read_windspeed():
-    """
-    Read windspeed from ADC.
-    You said you'll provide bash code; adapt it here.
-    For now this is a placeholder.
-    """
-    try:
-        # Example sketch of using subprocess to call an ADC-reading script:
-        # import subprocess
-        # out = subprocess.check_output(["/usr/local/bin/read_windspeed.sh"], text=True)
-        # return float(out.strip())
-        value = 0.0  # TODO: replace with real windspeed value
-        return value
-    except Exception as e:
-        logging.error("Error reading windspeed sensor: %s", e)
-        return None
-
-
-def read_current():
-    """
-    Read current from ADC.
-    Placeholder until bash code is translated.
-    """
-    try:
-        # Example sketch (similar to read_windspeed)
-        # import subprocess
-        # out = subprocess.check_output(["/usr/local/bin/read_current.sh"], text=True)
-        # return float(out.strip())
-        value = 0.0  # TODO: replace with real current value
-        return value
-    except Exception as e:
-        logging.error("Error reading current sensor: %s", e)
-        return None
-
 
 def log_sensor_readings():
     """Read all sensors once and log/print the results."""
