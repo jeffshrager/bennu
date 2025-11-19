@@ -39,7 +39,9 @@ CONFIG_FILE = "lamp.config"
 LOG_FILE = "lamp_controller.log"
 
 # Name of methane module & function (ADJUST to match your actual module)
-# from methane_sensor import read_methane_ppm   # <-- fix this import to match your setup
+
+from methane_sensor import init_methane, read_methane
+
 
 # ----------------------------------------------------------------------
 # GLOBAL STATE
@@ -209,16 +211,14 @@ def apply_lamp_state(new_state):
 # SENSOR READ FUNCTIONS (STUBS / WRAPPERS)
 # ----------------------------------------------------------------------
 
-def read_methane():
+def read_methane_wrapper():
     """
-    Read methane sensor via existing Python module.
-    Adjust this function to match your actual API.
+    Simple wrapper to plug into the logging code.
+    Returns gas1 (CH4) or None on error.
     """
     try:
-        # Example; change to your real call:
-        # value = read_methane_ppm()
-        value = 0.0  # TODO: replace with real methane value
-        return value
+        meas = read_methane()
+        return meas.get("gas1")
     except Exception as e:
         logging.error("Error reading methane sensor: %s", e)
         return None
@@ -227,7 +227,7 @@ def log_sensor_readings():
     """Read all sensors once and log/print the results."""
     ts = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime())
 
-    methane = read_methane()
+    methane = read_methane_wrapper()
     wind = read_windspeed()
     current = read_current()
 
@@ -255,6 +255,13 @@ def main():
 
     setup_logging()
     logging.info("=== Lamp controller starting up ===")
+
+    try:
+        from methane_sensor import init_methane
+        init_methane()
+        logging.info("Methane sensor initialized.")
+    except Exception as e:
+        logging.error("Could not initialize methane sensor: %s", e)
 
     setup_gpio()
 
