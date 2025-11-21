@@ -1,0 +1,38 @@
+[Unit]
+Description=Raspberry Pi Lamp and Sensor Controller
+After=network.target
+Wants=network.target
+
+# If you want to be explicit about I2C:
+# After=i2c-dev.service
+# Wants=i2c-dev.service
+
+[Service]
+Type=simple
+
+# Run as the 'pi' user (change if needed)
+User=pi
+Group=pi
+
+# Set the working directory to where your scripts live
+WorkingDirectory=/home/pi/boat_controller
+
+# The controller script (adjust path/name if needed)
+ExecStart=/usr/bin/python3 /home/pi/boat_controller/run.py
+
+# Restart behavior
+Restart=on-failure
+RestartSec=5
+
+# Give it a slightly generous stop time for clean GPIO/sensor shutdown
+TimeoutStopSec=20
+
+# Environment (add more if you need PYTHONPATH, venv, etc.)
+Environment=PYTHONUNBUFFERED=1
+
+# Standard output/error go to the journal (and your script also logs to its own file)
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
