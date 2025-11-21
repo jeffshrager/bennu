@@ -1,3 +1,12 @@
+# To test:
+#           journalctl -u lamp-controller.service -f
+#
+# To deploy:
+#           sudo cp lamp-controller.service /etc/systemd/system/
+#           sudo systemctl daemon-reload
+#           sudo systemctl enable lamp-controller.service
+#           sudo systemctl start lamp-controller.service
+
 [Unit]
 Description=Raspberry Pi Lamp and Sensor Controller
 After=network.target
@@ -9,28 +18,24 @@ Wants=network.target
 
 [Service]
 Type=simple
-
-# Run as the 'pi' user (change if needed)
 User=pi
 Group=pi
 
-# Set the working directory to where your scripts live
-WorkingDirectory=/home/pi/boat_controller
+# Set working directory so run.py finds lamp.config and logs locally
+WorkingDirectory=/home/pi/lamp-controller
 
-# The controller script (adjust path/name if needed)
-ExecStart=/usr/bin/python3 /home/pi/boat_controller/run.py
+# Start the controller
+ExecStart=/usr/bin/python3 /home/pi/lamp-controller/run.py
 
-# Restart behavior
-Restart=on-failure
+Restart=always
 RestartSec=5
 
-# Give it a slightly generous stop time for clean GPIO/sensor shutdown
+# Give it time for clean GPIO/sensor shutdown
 TimeoutStopSec=20
 
-# Environment (add more if you need PYTHONPATH, venv, etc.)
 Environment=PYTHONUNBUFFERED=1
 
-# Standard output/error go to the journal (and your script also logs to its own file)
+# All print/logging goes to journal (plus your file logger inside run.py)
 StandardOutput=journal
 StandardError=journal
 
