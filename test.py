@@ -12,10 +12,10 @@ from methane_sensor import init_methane, read_methane
 # ----------------------------------------------------------------------
 
 QUAD_GPIO_PINS = {
-    "bowport":   16,
-    "bowstar":   23,
-    "sternport": 24,
-    "sternstar": 25,
+    "bowport":   24,
+    "bowstar":   25,
+    "sternport": 16,
+    "sternstar": 23,
 }
 
 QUADS = list(QUAD_GPIO_PINS.keys())
