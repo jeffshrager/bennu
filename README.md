@@ -1,17 +1,20 @@
 Updated Monday PM(PST) 2025-11-17:
 
+Connecting to the remora: See slack note: https://bennuclimate.slack.com/archives/C086ACAUN8P/p1763857830785539
+
+Remember you're running ssh from a machine you ssh'd to, so if you
+simpy type ~. you will be disconnected from cataphract and your
+connection to the vessel will likely be killed (or may hang around
+like a zombie).  To disconnect from the rome trader only you need to
+double the tilde to quote it: ~~.
+
 Methane:
 
-ax.py (axetris reader) was tested by Jeff just before the LampRay was
-shipped.
+ax.py (axetris reader) tested remotely.
 
 Wind and Current:
 
-Wind and Current Sensor code are now in the same .sh file. Wind was
-tested by Jeff (in its original separate form), but he (Jeff) wasn't
-able to get current to read anything but 0s. Since this code looks
-identical, either the jumpering on the board was bad when Jeff tested
-it, or these have to be run in sequence (which Jeff didn't try).
+ tested remotely.
 
 Quad lamp control:
 
