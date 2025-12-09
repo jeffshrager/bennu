@@ -1,12 +1,30 @@
-Updated Monday PM(PST) 2025-11-17:
+Updated 2025-12-08:
 
-Connecting to the remora: See slack note: https://bennuclimate.slack.com/archives/C086ACAUN8P/p1763857830785539
+Connecting to the remora (See ~/howto)
 
 Remember you're running ssh from a machine you ssh'd to, so if you
 simpy type ~. you will be disconnected from cataphract and your
 connection to the vessel will likely be killed (or may hang around
 like a zombie).  To disconnect from the rome trader only you need to
 double the tilde to quote it: ~~.
+
+repo is ~/software/bennu
+
+Try opening two shells and in one of them start run.py:
+
+   python3 run.py
+
+and in he other use:
+
+   cp lamp_all_on.config lamp.config 
+or cp lamp_all_off.config lamp.config
+
+Save the log locally (or get it in whatever way you like) and run:
+
+   python3 logplot.py [--maw 10] [--mhr 0.25] logfile.log
+
+where maw is moving average window, and mhr is methane half range for
+scaling.
 
 Methane:
 
