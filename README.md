@@ -1,6 +1,7 @@
 Updated 2025-12-08:
 
-Connecting to the remora (See ~/howto)
+======================
+** Connecting to the remora (See ~/howto)
 
 Remember you're running ssh from a machine you ssh'd to, so if you
 simpy type ~. you will be disconnected from cataphract and your
@@ -25,6 +26,21 @@ Save the log locally (or get it in whatever way you like) and run:
 
 where maw is moving average window, and mhr is methane half range for
 scaling.
+
+Sending commands:
+
+   ssh bennu@relay.bennuclimate.net ssh localhost -p 21965 uptime
+
+======================
+** DISCONNECTING AND DISOWNING RUN.PY IF YOU STARTED IT MANUALLY:
+
+^Z
+bg
+jobs
+[find the [#] of the job]
+disown -h %#
+
+======================
 
 Methane:
 
