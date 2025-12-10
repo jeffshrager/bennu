@@ -28,13 +28,11 @@ def main():
         description="Plot methane, windspeed, and current from a log file."
     )
     parser.add_argument("logfile", help="Path to the log file")
-
-    # Keep --mhr for backward compatibility, but it's no longer used
     parser.add_argument(
-        "--mhr",
-        type=float,
-        default=0.25,
-        help="(Unused) legacy methane half-range argument; kept for compatibility.",
+        "--label",
+        type=str,
+        default="Sensor readings from log",
+        help="Overall title for the whole figure.",
     )
     parser.add_argument(
         "--maw",
@@ -123,10 +121,9 @@ def main():
     ax_wind.set_ylim(wind_lo, wind_hi)
     ax_wind.legend(loc="upper right")
 
-    fig.suptitle("Sensor readings from log")
+    fig.suptitle(args.label)
     plt.tight_layout()
     plt.show()
-
 
 if __name__ == "__main__":
     main()
