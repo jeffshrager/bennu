@@ -31,7 +31,7 @@ def main():
     parser.add_argument(
         "--label",
         type=str,
-        default="Sensor readings from log",
+        default="Sensor readings from log (use --label to set this!)",
         help="Overall title for the whole figure.",
     )
     parser.add_argument(
