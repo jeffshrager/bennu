@@ -1,7 +1,8 @@
-Updated 2025-12-08:
+#Updated by Jeff on 20251210
 
 =====================================================================
-How I run studies:
+
+#Running studies
 
 LocaL: There is a dir under the repo called 'experiments'. In that are
 dirs that are named by the date of the experiment. (And sometimes
@@ -11,7 +12,9 @@ day.) All the study materials will end up here, mainly the script
 (usually run.sh) and I take a screenshot of where the ship is at the
 moment:
 
+```
 https://www.marinetraffic.com/en/ais/details/ships/shipid:5261520) and
+```
 
 Eventually the logs will get stored here and all the analysis will get
 done here.
@@ -23,7 +26,9 @@ THE NAME OF THE NEW STUDY *****
 Note that the first thing and the last thing that every experiment
 should do is to turn the lights off. the way you do that is:
 
+```
    cd /home/bennu/software/bennu; cp lamp_all_off.config lamp.config
+```
 
 HOWEVER: Most experiments don't end normally -- mostly they are
 programmed to run as long as possible, and eventually they come up
@@ -49,11 +54,15 @@ located in the experiment dir. The other two are talking to the pi
 (via: ssh rome). One of these is going to cd to the current
 experiment, e.g.,
 
+```
   cd /home/bennu/software/bennu/experiments/2025etc
+```
 
 the other will be talking to the repo src main:
 
+```
   cd /home/bennu/software/bennu
+```
 
 I'll call the top one expterm and the bottom one logterm. The reason
 for logterm is that the log files are there, most importantly, the
@@ -65,15 +74,18 @@ discussion.)
 
 When I think I'm ready to run, I do this in logterm:
 
+```
    tail -f lamp_controller.log
-
+```
 In theory run.py is always running because it's a service started by a
 demon (or a demon started by a service? ... whatever) and it should
 start showing the data being logged.
 
 Then, on expterm I simply:
 
+```
    source run.sh
+```
 
 The first thing you should see is the ***** line added to the log. If
 you don't see this, somethings's immediately wrong. AFter that, make
@@ -91,7 +103,9 @@ reboot:
 
 Afterwards you're gonna want to locally:
 
+```
   scp rome:/home/bennu/software/bennu/lamp_controller.log .
+```
 
 and maybe consider gettting all the logs. (Maybe see the "Working with
 logs" section for guidance here.)
@@ -99,24 +113,29 @@ logs" section for guidance here.)
 Finally, you'll want to edit the log to just get the data you want. I
 usually create an experiment-specific logged called something like
 
+```
    Experiment_20251209a.log
+```
 
 that just has the relevant records.
 
 You should plot the data immediately to make sure it looks sane:
 
+```
    conda activate test
    python3 ../../logplot.py Experiment_20251210.log
-
-
+```
 
 Then you'll want to turn this into a tsv for analysis:
 
+```
    conda activate test
    python3 ../../log2tsv.py Experiment_20251210.log > Experiment_20251210.tsv
+```
    
 And you should end up with something that looks like this:
 
+```
 time	methane	windspeed	current
 2025-12-10T23:38:14	1.9190001487731934	2.68025	0.3234375
 2025-12-10T23:38:19	1.9190001487731934	2.6765625	0.323125
@@ -129,9 +148,11 @@ time	methane	windspeed	current
 2025-12-10T23:38:55	1.9200000762939453	2.6635625000000003	0.323375
 2025-12-10T23:39:00	1.9130001068115234	2.6488125	0.3231875
 ...
+```
 
 =====================================================================
-** Connecting to the remora (See ~/howto)
+
+#Connecting to the remora (See ~/howto)
 
 Remember you're running ssh from a machine you ssh'd to, so if you
 simpy type ~. you will be disconnected from cataphract and your
@@ -139,41 +160,117 @@ connection to the vessel will likely be killed (or may hang around
 like a zombie).  To disconnect from the rome trader only you need to
 double the tilde to quote it: ~~.
 
-repo is ~/software/bennu
+The repo is: ~/software/bennu
 
 Try opening two shells and in one of them start run.py:
 
+```
    python3 run.py
+```
 
 and in he other use:
 
+```
    cp lamp_all_on.config lamp.config 
 or cp lamp_all_off.config lamp.config
+```
 
 Save the log locally (or get it in whatever way you like) and run:
 
+```
    python3 logplot.py [--maw 10] [--mhr 0.25] logfile.log
+```
 
 where maw is moving average window, and mhr is methane half range for
 scaling.
 
 Sending commands:
 
+```
    ssh bennu@relay.bennuclimate.net ssh localhost -p 21965 uptime
+```
 
 =====================================================================
-Working with logs:
 
+#Working with logs:
 
+From the src dir 
+
+```
+   cd logbkup
+   scp -p "rome:/home/bennu/software/bennu/*log*" .
+```
+
+Note that -p preserves the log's timestamps.
+
+IT IS CRITICAL TO UNDERSTAND that the logs are automagically
+renumbered by the log mananger, and up to 30 (I think) logs are
+retained. This is EXTRMELY confusing. The current log is always
+lamp_controller.log (which is why you can always see what the remora
+is seeing by tail -f'ing this file). When this fills up (at ~1meg) it
+gets renamed to lamp_controller.log.1, and what WAS
+lamp_controller.log.1 gets renamed to lamp_controller.log.2, and so
+on, up to .30, after which they are lost forever! (So definitely do
+the backup recommended here!)
+
+The problem with this clever/stupid system is that when we copy them
+locally, unless we're really careful, we will overwrite old lots
+called .# with whatever .# is now, which is unlikely to be the same!
+See, very confusing. In order to avoid this problem. (Or perhaps to
+make it even more confusing, but at least reduce the chance of losing
+data!) we have a convention for renaming these to include the CURRENT
+LOCAL timestamp. (Note: NOT the timestamp of the log because then the
+renaming will fuck us because it doesn't change the time stamps!)
+
+I just do this with filer:
+
+```
+   filer -c cp -m "lamp_controller.log*" -r "'ds'dt_log*" | bash
+   filer -c cp -m "lamp_controller.log" -r "'ds'dt_log" | bash
+```
+
+(Annoyingly, filer * requires at least one character, it can't be null
+so we need to do this twice. I blame the log manager which should
+really call the main log .0))
+
+This should turn:
+
+```
+lamp_controller.log
+lamp_controller.log.1
+lamp_controller.log.2
+```
+into:
+```
+202512110053_log
+202512110053_log.1
+202512110053_log.2
+```
+
+Then you can:
+```
+   rm lamp*
+```
+
+And push a new commit of the repo. 
+
+(If you're feeling lucky, you can use mv instead of cp in filer, and
+save yourself having to clean up the old copies.)
+
+Note that this process makes LOTS of replicated log files (because of
+the log renaming mess. Better more than less and these can be sorted
+out later. 
 
 =====================================================================
 ** DISCONNECTING AND DISOWNING RUN.PY IF YOU STARTED IT MANUALLY:
 
+```
 ^Z
 bg
 jobs
 [find the [#] of the job]
 disown -h %#
+```
 
 ======================
 
