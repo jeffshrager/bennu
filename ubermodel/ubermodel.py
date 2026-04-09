@@ -416,6 +416,8 @@ def parse_range_arg(s):
 
 
 def main():
+    ts = datetime.now().strftime('%Y%m%d_%H%M%S')   # captured once, used as default expname
+
     all_known_params = set(PRIMARY_INPUTS)
     for d in (list(DEPLOYMENT_SETTINGS.values()) + list(POWER_SETTINGS.values())
               + list(DEVICE_SETTINGS.values())):
@@ -425,6 +427,8 @@ def main():
         description='Methane Destruction Cost Model',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__)
+    parser.add_argument('--expname', default=ts,
+                        help='Experiment name; used as the output filename (default: timestamp)')
     parser.add_argument('--setting', default='all',
                         choices=['all'] + list(DEPLOYMENT_SETTINGS.keys()),
                         help='Deployment context (default: all)')
@@ -497,11 +501,9 @@ def main():
     for s, pw, dv, p, out in results:
         print_results(s, pw, dv, p, out)
 
-    # ── Write timestamped TSV ─────────────────────────────────────────────────
+    # ── Write TSV ─────────────────────────────────────────────────────────────
     os.makedirs('results', exist_ok=True)
-    ts       = datetime.now().strftime('%Y%m%d_%H%M%S')
-    label    = known.setting
-    tsv_path = os.path.join('results', f'results_{label}_{ts}.tsv')
+    tsv_path = os.path.join('results', f'{known.expname}.tsv')
 
     # Column order: identity | I_ | B_ | P_ | O_  (union across all rows)
     all_keys = set()
@@ -513,7 +515,32 @@ def main():
     o_cols = sorted(k for k in all_keys if k.startswith('O_'))
     fieldnames = ['setting', 'power', 'device'] + i_cols + b_cols + p_cols + o_cols
 
+    # Reconstruct the full command line for the header
+    cli_args = (f'--expname {known.expname}  --setting {known.setting}'
+                + (f'  --power {known.power}' if known.power else '')
+                + f'  --device {known.device}')
+    if overrides:
+        for pname, vals in overrides.items():
+            v = vals[0] if len(vals) == 1 else f'[{vals[0]},{vals[-1]},...]'
+            cli_args += f'  --{pname} {v}'
+
+    n = len(results)
     with open(tsv_path, 'w', newline='') as fh:
+        # Human-readable header (non-TSV lines)
+        fh.write(f'# expname:   {known.expname}\n')
+        fh.write(f'# timestamp: {ts}\n')
+        fh.write(f'# setting:   {known.setting}\n')
+        fh.write(f'# power:     {known.power or "(default per setting)"}\n')
+        fh.write(f'# device:    {known.device}\n')
+        if overrides:
+            for pname, vals in overrides.items():
+                fh.write(f'# override:  {pname} = {vals}\n')
+        fh.write(f'# combos:    {", ".join(f"{s}+{pw}+{dv}" for s,pw,dv,_,_ in results[:4])}'
+                 + (f'  (+{n-4} more)' if n > 4 else '') + '\n')
+        fh.write(f'# rows:      {n}\n')
+        fh.write(f'# cli:       {cli_args}\n')
+        fh.write('#\n')
+        # TSV data
         writer = csv.DictWriter(fh, fieldnames=fieldnames, delimiter='\t')
         writer.writeheader()
         for s, pw, dv, p, out in results:
@@ -521,7 +548,6 @@ def main():
             row.update(p); row.update(out)
             writer.writerow({k: row.get(k, '') for k in fieldnames})
 
-    n = len(results)
     print(f"\nResults written to: {tsv_path}  ({n} row{'s' if n != 1 else ''})")
 
 

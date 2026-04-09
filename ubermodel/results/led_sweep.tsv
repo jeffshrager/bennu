@@ -1,0 +1,15 @@
+# expname:   led_sweep
+# timestamp: 20260409_132409
+# setting:   field
+# power:     (default per setting)
+# device:    led
+# override:  B_solar_nameplate_mw = [50.0, 100.0, 150.0, 200.0]
+# combos:    field+solar+led, field+solar+led, field+solar+led, field+solar+led
+# rows:      4
+# cli:       --expname led_sweep  --setting field  --device led  --B_solar_nameplate_mw [50.0,200.0,...]
+#
+setting	power	device	I_ch4_per_kwy	I_ch4_reference_concentration_ppb	I_co2e_ratio	I_credit_price_per_tonne_ch4	I_credit_price_per_tonne_co2e	B_device_efficiency_multiplier	B_solar_cap_cost_per_mw_nameplate	B_solar_land_use_acres_per_mw	B_solar_nameplate_mw	B_solar_nameplate_ratio	B_solar_panel_lifetime_years	B_target_megatonnes	P_annual_cost	P_concentration_factor	P_device_efficiency_multiplier	P_effective_ch4_per_kwy	P_energy_kwy	P_nameplate_mw	P_solar_construction_premium	O_acreage	O_capital_cost	O_ch4_converted_tonnes	O_co2e_converted_tonnes	O_cost_per_tonne_ch4	O_cost_per_tonne_co2e	O_net_ch4	O_net_co2e	O_revenue_ch4	O_revenue_co2e	O_solar_acres_for_target	O_solar_mw_for_target
+field	solar	led	3.0	2000	28	1200	100	1000	1000000	4	50.0	0.4	25	100	2000000.0	1.0	1000	3000.0	20000.0	50.0	1.0	200.0	50000000.0	60000000.0	1680000000.0	0.03333333333333333	0.0011904761904761906	71998000000.0	167998000000.0	72000000000.0	168000000000.0	333.33333333333337	83.33333333333334
+field	solar	led	3.0	2000	28	1200	100	1000	1000000	4	100.0	0.4	25	100	4000000.0	1.0	1000	3000.0	40000.0	100.0	1.0	400.0	100000000.0	120000000.0	3360000000.0	0.03333333333333333	0.0011904761904761906	143996000000.0	335996000000.0	144000000000.0	336000000000.0	333.33333333333337	83.33333333333334
+field	solar	led	3.0	2000	28	1200	100	1000	1000000	4	150.0	0.4	25	100	6000000.0	1.0	1000	3000.0	60000.0	150.0	1.0	600.0	150000000.0	180000000.0	5040000000.0	0.03333333333333333	0.0011904761904761906	215994000000.0	503994000000.0	216000000000.0	504000000000.0	333.33333333333337	83.33333333333334
+field	solar	led	3.0	2000	28	1200	100	1000	1000000	4	200.0	0.4	25	100	8000000.0	1.0	1000	3000.0	80000.0	200.0	1.0	800.0	200000000.0	240000000.0	6720000000.0	0.03333333333333333	0.0011904761904761906	287992000000.0	671992000000.0	288000000000.0	672000000000.0	333.33333333333337	83.33333333333334
