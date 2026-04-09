@@ -4,7 +4,8 @@
       "Bash(python3 ubermodel.py --setting solar --solar_nameplate_mw [50,200,50])",
       "Bash(python3 ubermodel.py --setting solar --solar_nameplate_mw '[50,200,50]')",
       "Bash(python3 ubermodel.py --setting all)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(bash:*)"
     ]
   }
 }

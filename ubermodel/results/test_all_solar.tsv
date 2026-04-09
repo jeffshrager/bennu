@@ -1,0 +1,13 @@
+# expname:   test_all_solar
+# timestamp: 20260409_132659
+# setting:   all
+# power:     solar
+# device:    fluorescent
+# combos:    field+solar+fluorescent, landfill+solar+fluorescent, troposphere+solar+fluorescent
+# rows:      3
+# cli:       --expname test_all_solar  --setting all  --power solar  --device fluorescent
+#
+setting	power	device	I_ch4_per_kwy	I_ch4_reference_concentration_ppb	I_co2e_ratio	I_credit_price_per_tonne_ch4	I_credit_price_per_tonne_co2e	B_device_efficiency_multiplier	B_engineering_improvement	B_landfill_ch4_concentration_ppm	B_landfill_construction_premium	B_landfill_nameplate_mw	B_solar_cap_cost_per_mw_nameplate	B_solar_land_use_acres_per_mw	B_solar_nameplate_mw	B_solar_nameplate_ratio	B_solar_panel_lifetime_years	B_target_megatonnes	B_troposphere_volume_m3	B_wh_to_remove_1ppm_per_m3	B_years_to_run	P_annual_cost	P_concentration_factor	P_device_efficiency_multiplier	P_effective_ch4_per_kwy	P_energy_kwy	P_nameplate_mw	P_solar_construction_premium	P_wh_to_remove_1ppm_raw	P_wy_needed	P_wy_to_remove_1ppm_raw	O_acreage	O_annual_cost	O_capital_cost	O_ch4_converted_tonnes	O_co2e_converted_tonnes	O_cost_per_tonne_ch4	O_cost_per_tonne_co2e	O_net_ch4	O_net_co2e	O_revenue_ch4	O_revenue_co2e	O_solar_acreage_needed	O_solar_acres_for_target	O_solar_mw_for_target	O_solar_mw_nameplate_needed	O_solar_w_needed	O_solar_w_raw	O_total_cost
+field	solar	fluorescent	3.0	2000	28	1200	100	1.0					1000000	4	100	0.4	25	100				4000000.0	1.0	1.0	3.0	40000.0	100	1.0				400		100000000.0	120000.0	3360000.0	33.333333333333336	1.1904761904761905	140000000.0	332000000.0	144000000.0	336000000.0		333333.3333333333	83333.33333333333				
+landfill	solar	fluorescent	3.0	2000	28	1200	100	1.0		500	4	100	1000000	4	100	0.4	25					16000000.0	250.0	1.0	3.0	40000.0	100	4				400		400000000	30000000.0	840000000.0	0.5333333333333333	0.01904761904761905	35984000000.0	83984000000.0	36000000000.0	84000000000.0							
+troposphere	solar	fluorescent	3.0	2000	28	1200	100	1.0	10				1000000	4	100	0.4	25	100	1e+18	50	10			1.0	3.0				5e+19	570385580652521.1	5703855806525211.0		5703855806525.211										570385580.6525211			142596395.16313028	57038558065252.11	570385580652521.1	142596395163130.28

@@ -1,0 +1,12 @@
+# expname:   test_highprice
+# timestamp: 20260409_132659
+# setting:   field
+# power:     (default per setting)
+# device:    fluorescent
+# override:  I_credit_price_per_tonne_ch4 = [2000.0]
+# combos:    field+solar+fluorescent
+# rows:      1
+# cli:       --expname test_highprice  --setting field  --device fluorescent  --I_credit_price_per_tonne_ch4 2000.0
+#
+setting	power	device	I_ch4_per_kwy	I_ch4_reference_concentration_ppb	I_co2e_ratio	I_credit_price_per_tonne_ch4	I_credit_price_per_tonne_co2e	B_device_efficiency_multiplier	B_solar_cap_cost_per_mw_nameplate	B_solar_land_use_acres_per_mw	B_solar_nameplate_mw	B_solar_nameplate_ratio	B_solar_panel_lifetime_years	B_target_megatonnes	P_annual_cost	P_concentration_factor	P_device_efficiency_multiplier	P_effective_ch4_per_kwy	P_energy_kwy	P_nameplate_mw	P_solar_construction_premium	O_acreage	O_capital_cost	O_ch4_converted_tonnes	O_co2e_converted_tonnes	O_cost_per_tonne_ch4	O_cost_per_tonne_co2e	O_net_ch4	O_net_co2e	O_revenue_ch4	O_revenue_co2e	O_solar_acres_for_target	O_solar_mw_for_target
+field	solar	fluorescent	3.0	2000	28	2000.0	100	1.0	1000000	4	100	0.4	25	100	4000000.0	1.0	1.0	3.0	40000.0	100	1.0	400	100000000.0	120000.0	3360000.0	33.333333333333336	1.1904761904761905	236000000.0	332000000.0	240000000.0	336000000.0	333333.3333333333	83333.33333333333

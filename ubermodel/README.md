@@ -6,7 +6,28 @@ tropospheric scale-up analysis.  Translated from `Cost_of_methane_destruction.xl
 
 ---
 
-## Scenarios and `--setting`
+## Three independent dimensions
+
+Each run is defined by three orthogonal choices:
+
+| Flag | Controls | Options |
+|---|---|---|
+| `--setting` | Deployment context (where, what CH₄ concentration) | `ship`, `field`, `landfill`, `troposphere`, `all` |
+| `--power` | Energy source | `solar`, `nuclear`, `ship_engine`, `grid` |
+| `--device` | CH₄ destruction technology | `fluorescent`, `led` |
+
+When `--power` is omitted the canonical default for each setting is used
+(ship → `ship_engine`, field/landfill → `solar`, troposphere → `nuclear`).
+When `--device` is omitted it defaults to `fluorescent`.
+
+Supported setting + power combinations:
+`ship+ship_engine`, `field+solar`, `landfill+solar`,
+`troposphere+nuclear`, `troposphere+solar`.
+Unsupported pairs produce a warning and are skipped.
+
+---
+
+## `--setting` deployment contexts
 
 Each named setting is a pre-configured bundle of background parameters for one
 deployment context.  Pass it with `--setting <name>`:
@@ -41,29 +62,38 @@ solar, landfill, and troposphere outputs simultaneously.
 ## Quick start
 
 ```bash
-# Run all scenarios with default parameters
+# Run all canonical scenarios with default parameters
 python3 ubermodel.py
 
-# Run a single scenario
-python3 ubermodel.py --setting solar
+# Run a single setting with default power and device
+python3 ubermodel.py --setting field
 python3 ubermodel.py --setting landfill
+
+# Choose power source and device
+python3 ubermodel.py --setting troposphere --power solar --device led
+
+# Name the experiment (controls the output filename)
+python3 ubermodel.py --expname my_baseline
 
 # Override a primary input (I_ prefix)
 python3 ubermodel.py --setting all --I_ch4_per_kwy 4.5
 
-# Override a background setting (B_ prefix)
-python3 ubermodel.py --setting solar --B_solar_nameplate_mw 200
+# Override a background value (B_ prefix)
+python3 ubermodel.py --setting field --B_solar_nameplate_mw 200
 
 # Sweep a parameter over a range [low, high, step]
-python3 ubermodel.py --setting solar --B_solar_nameplate_mw '[50,200,50]'
+python3 ubermodel.py --expname solar_sweep --setting field --B_solar_nameplate_mw '[50,200,50]'
 
 # Sweep multiple parameters (Cartesian product — one row per combination)
-python3 ubermodel.py --setting all --I_ch4_per_kwy '[1,5,1]' --I_co2e_ratio '[20,30,5]'
+python3 ubermodel.py --expname big_sweep --setting all --I_ch4_per_kwy '[1,5,1]' --I_co2e_ratio '[20,30,5]'
+
+# Run the full test suite
+bash run.sh
 ```
 
 > **Shell note:** quote range arguments to prevent glob expansion, e.g. `'[50,200,50]'`.
 
-Results are printed to the terminal and written to `results/results_<setting>_<YYYYMMDD_HHMMSS>.tsv`.
+Results are printed to the terminal and written to `results/<expname>.tsv` (default expname is a timestamp).
 
 ---
 
@@ -221,13 +251,36 @@ Each run prints results to the terminal and saves a tab-separated file to `resul
 
 ---
 
+## Output files
+
+Every run writes `results/<expname>.tsv`.  If `--expname` is not given, the
+timestamp is used as the name (e.g. `results/20260409_131500.tsv`).
+
+Each file begins with a human-readable `#`-prefixed header:
+```
+# expname:   my_run
+# timestamp: 20260409_131500
+# setting:   field
+# power:     (default per setting)
+# device:    fluorescent
+# override:  I_ch4_per_kwy = [1.0, 2.0, 3.0]
+# combos:    field+solar+fluorescent, ...
+# rows:      3
+# cli:       --expname my_run  --setting field  ...
+#
+setting  power  device  I_ch4_per_kwy  ...
+```
+followed by the TSV data.  The `#` lines are skipped by standard TSV parsers
+that support comment stripping; otherwise strip them before importing.
+
 ## Directory layout
 
 ```
 ubermodel/
 ├── ubermodel.py        # model + CLI
+├── run.sh              # test suite covering all functionality
 ├── README.md           # this file
-├── results/            # auto-created; timestamped TSV outputs
+├── results/            # auto-created; named/timestamped TSV outputs
 └── seshsums/           # human-readable session summaries
 ```
 
