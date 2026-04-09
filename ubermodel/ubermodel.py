@@ -4,348 +4,460 @@ Cost of Methane Destruction Model
 Translated from: Cost_of_methane_destruction.xlsx
 Sheets modelled: Calculations Master, Summary Master
 
-This script estimates the cost and carbon-credit revenue of photo-catalytic
-CH4 destruction across three deployment scenarios:
-  1. Ship Ambient       – devices mounted on ocean-going vessels
-  2. Solar Field Ambient – devices co-located with a ground-mounted solar farm
-  3. Landfill Solar Field – devices under solar panels sited on a landfill
+Usage:
+  python ubermodel.py [--setting SETTING] [--param_name value_or_range ...]
 
-All monetary values are in USD.  Mass is in metric tonnes.
-Energy is expressed in SI units (Joules) plus practical units (kWh, kWy).
+  SETTING  one of: ship, solar, landfill, troposphere, all  (default: all)
+  Any parameter may be overridden:
+    --param_name 4.5              single value
+    --param_name [1.0,5.0,0.5]   sweep; one output row per step
+
+Examples:
+  python ubermodel.py --setting solar
+  python ubermodel.py --setting all --ch4_per_kwy 4.5
+  python ubermodel.py --setting solar --solar_nameplate_mw [50,200,50]
+  python ubermodel.py --setting all --ch4_per_kwy [1,5,1] --co2e_ratio [20,30,5]
 """
 
-# =============================================================================
-# SECTION 1 – UNIT DEFINITIONS
-# All values relative to the base SI unit listed in the comment.
-# =============================================================================
-
-J    = 1                     # Joule  (base unit of energy)
-W    = 1                     # Watt   = 1 J/s  (base unit of power)
-kW   = 1_000  * W            # Kilowatt
-MW   = 1_000  * kW           # Megawatt
-Wh   = 3_600  * J            # Watt-hour   (energy delivered at 1 W for 1 hour)
-kWh  = kW     * Wh           # Kilowatt-hour
-MWh  = MW     * Wh           # Megawatt-hour
-
-ppm  = 1.0                   # Parts per million (mixing-ratio unit)
-ppb  = ppm / 1_000           # Parts per billion
-
-hours_per_year        = 365.25 * 24          # Hours in a calendar year (~8 766 h)
-sunlight_hours_per_year = hours_per_year / 2 # Approximate solar irradiance hours/year
-
-kWy  = kW * hours_per_year * Wh    # Kilowatt-year in Joules
-MWy  = MW * hours_per_year * Wh    # Megawatt-year in Joules
-
-tonnes_per_gram        = 1e-6      # Conversion: grams → metric tonnes
-megatonnes_per_tonne   = 1e-6      # Conversion: metric tonnes → megatonnes
-target_megatonnes      = 100       # Climate policy target: remove 100 megatonnes CH4/year
-target_tonnes          = target_megatonnes / megatonnes_per_tonne  # = 1e8 tonnes CH4/year
+import argparse
+import csv
+import itertools
+import os
+import sys
+from datetime import datetime
 
 # =============================================================================
-# SECTION 2 – CONVERSION RATIO  (key physical input)
-# How much CH4 can be photo-catalytically converted per unit of electrical energy,
-# measured at the reference concentration below.
+# UNIT DEFINITIONS
 # =============================================================================
-
-ch4_reference_concentration_ppb = 2_000   # ppb – concentration at which the ratio was measured
-
-# Core conversion ratio: 1 kWy of device energy converts this many tonnes of CH4
-# (experimentally derived; treated as linear with concentration in range 2–50,000 ppm)
-ch4_per_kwy = 3.0             # tonnes CH4 destroyed per kWy
-
-co2e_ratio   = 28             # Global-warming potential of CH4 vs CO2 (100-yr GWP)
-                              # Used to express CH4 removal as CO2-equivalent tonnes
-
-# Derived conversion ratios
-ch4_per_mwy  = ch4_per_kwy * 1_000          # tonnes CH4 per MWy  (1 MWy = 1000 kWy)
-co2e_per_kwy = ch4_per_kwy * co2e_ratio     # tonnes CO2e per kWy
-co2e_per_mwy = co2e_per_kwy * 1_000         # tonnes CO2e per MWy
-
-# Energy intensity (how many Joules to destroy one tonne of CH4 / CO2e)
-j_per_tonne_ch4  = kWy / ch4_per_kwy        # Joules required to destroy 1 tonne CH4
-j_per_tonne_co2e = j_per_tonne_ch4 / co2e_ratio  # Joules required to displace 1 tonne CO2e
+J    = 1
+W    = 1
+kW   = 1_000 * W
+MW   = 1_000 * kW
+Wh   = 3_600 * J
+kWh  = kW * Wh
+MWh  = MW * Wh
+ppm  = 1.0
+ppb  = ppm / 1_000
+hours_per_year          = 365.25 * 24           # ≈ 8 766 h
+sunlight_hours_per_year = hours_per_year / 2
+kWy  = kW * hours_per_year * Wh                 # Kilowatt-year in Joules
+MWy  = MW * hours_per_year * Wh
+tonnes_per_gram         = 1e-6
+megatonnes_per_tonne    = 1e-6
 
 # =============================================================================
-# SECTION 3 – COST OF ENERGY
-# Two energy supply contexts are modelled.
+# PRIMARY INPUTS  (physical / experimental — scenario-independent)
+# Override any with --param_name value.
 # =============================================================================
+PRIMARY_INPUTS = {
+    # Tonnes CH4 destroyed per kWy of device energy (at ch4_reference_concentration_ppb;
+    # treated as linear with concentration across 2–50 000 ppm)
+    'ch4_per_kwy':                     3.0,
 
-# -- USA grid electricity (wholesale) --
-energy_cost_usa_per_mwh = 30.0   # $/MWh  (average USA 2023 wholesale price)
-# Convert to $/kWy (multiply by hours/year, divide by 1000 to go MWh→kWh)
-energy_cost_usa_per_kwy = (energy_cost_usa_per_mwh / 1_000) * hours_per_year
+    # 100-year global warming potential of CH4 relative to CO2
+    'co2e_ratio':                      28,
 
-# -- Shipboard electricity --
-energy_cost_ship_per_kwh = 0.25  # $/kWh  (hypothetical cost; Stylianos 2024 estimate –
-                                 # noted as "probably never to be charged")
-energy_cost_ship_per_kwy = energy_cost_ship_per_kwh * hours_per_year  # $/kWy
+    # Reference CH4 concentration at which ch4_per_kwy was measured
+    'ch4_reference_concentration_ppb': 2_000,   # ppb
 
-# =============================================================================
-# SECTION 4 – CARBON CREDIT PRICES
-# Revenue that can be earned by certifiably destroying CH4 / CO2e.
-# =============================================================================
-
-credit_price_per_tonne_ch4  = 1_200  # $/tonne CH4   (EPA Methane Fee 2025;
-                                     # rising to $1 500/t in 2026 – US ton;
-                                     # note: currently only applies to the
-                                     # largest fossil-fuel emitters)
-
-credit_price_per_tonne_co2e = 100    # $/tonne CO2e  ("ideal target"; actual
-                                     # permanent-removal market closer to $250)
+    # Carbon credit / fee prices
+    'credit_price_per_tonne_ch4':      1_200,   # $/tonne CH4  (EPA Methane Fee 2025)
+    'credit_price_per_tonne_co2e':     100,     # $/tonne CO2e (voluntary market target)
+}
 
 # =============================================================================
-# SECTION 5 – SOLAR FIELD PARAMETERS  (capital & land)
+# SETTINGS  (named scenario parameter bundles)
+# Select with --setting <name>.  Override individual params via --param_name.
 # =============================================================================
+SETTINGS = {
 
-solar_cap_cost_per_mw_nameplate = 1_000_000  # $/MW nameplate  (~$1/W installed, USA)
-solar_land_use_acres_per_mw     = 4          # acres per MW nameplate capacity
-solar_nameplate_ratio           = 0.40       # actual average output / nameplate capacity
-solar_panel_lifetime_years      = 25         # assumed panel service life in years
+    # ── Ship Ambient ──────────────────────────────────────────────────────────
+    # Devices mounted on ocean-going vessels, destroying ambient-level CH4.
+    'ship': {
+        'ship_powerplant_mw':       60,       # MW  – typical ship propulsion power
+        'ship_device_power_kw':     100,      # kW  – power allocated to CH4 device
+        'ship_days_per_year':       250,      # days at sea per year
+        'energy_cost_ship_per_kwh': 0.25,    # $/kWh – shipboard electricity
+        'global_ship_fleet':        80_000,   # total ocean-going vessels
+        'plausible_equipped_fleet': 10_000,   # vessels plausibly fitted with devices
+        'avg_power_per_ship_mw':    1,        # MW of device power per equipped ship
+    },
 
-# Landfill-sited solar carries a construction premium over standard solar
-landfill_construction_premium   = 4          # multiplier on standard solar capex
-                                             # (EPA requires landfill remediation above
-                                             # 500 ppm CH4; construction is harder there)
+    # ── Solar Field Ambient ───────────────────────────────────────────────────
+    # Ground-mounted solar farm powering CH4 destruction at ambient concentration.
+    'solar': {
+        'solar_nameplate_mw':              100,        # MW – example field nameplate
+        'solar_cap_cost_per_mw_nameplate': 1_000_000,  # $/MW installed  (~$1/W, USA)
+        'solar_land_use_acres_per_mw':     4,          # acres per MW nameplate
+        'solar_nameplate_ratio':           0.40,       # capacity factor (output/nameplate)
+        'solar_panel_lifetime_years':      25,         # assumed panel service life
+        'energy_cost_usa_per_mwh':         30.0,       # $/MWh USA wholesale (reference)
+        'target_megatonnes':               100,        # Mt CH4/yr climate-policy target
+    },
 
-landfill_ch4_concentration_ppm  = 500        # ppm – EPA remediation threshold;
-                                             # used as the input concentration for
-                                             # landfill device performance
+    # ── Landfill Solar Field ──────────────────────────────────────────────────
+    # Solar panels on a landfill; high local CH4 concentration boosts conversion.
+    'landfill': {
+        'landfill_nameplate_mw':           100,        # MW – example nameplate
+        'landfill_construction_premium':   4,          # capex multiplier vs standard solar
+        'landfill_ch4_concentration_ppm':  500,        # ppm – EPA remediation threshold
+        # Shared solar-field parameters
+        'solar_cap_cost_per_mw_nameplate': 1_000_000,
+        'solar_land_use_acres_per_mw':     4,
+        'solar_nameplate_ratio':           0.40,
+        'solar_panel_lifetime_years':      25,
+    },
 
-# =============================================================================
-# SECTION 6 – SHIP AMBIENT MODEL
-# Devices mounted on ocean-going vessels destroying ambient-concentration CH4.
-# =============================================================================
+    # ── Troposphere / Global ──────────────────────────────────────────────────
+    # Back-of-envelope scale needed to shift global atmospheric CH4 by 1 ppm.
+    'troposphere': {
+        'troposphere_volume_m3':       1e18,          # m³ – approx troposphere volume
+        'wh_to_remove_1ppm_per_m3':    50,            # Wh to remove 1 ppm CH4 from 1 m³
+        'nuclear_plant_output_wy':     30_000_000,    # Wy – annual output of one nuclear plant
+        'led_efficiency_multiplier':   1_000,         # LED devices ~1000× better than bulbs
+        'years_to_run':                10,            # campaign time horizon (years)
+        'engineering_improvement':     10,            # additional device improvement factor
+        'cost_per_micronuke':          20_000_000,    # $ – capital cost of one micro-reactor
+        'target_megatonnes':           100,           # Mt CH4/yr climate-policy target
+    },
+}
 
-ship_powerplant_mw          = 60     # MW  – typical ship propulsion power
-ship_device_power_kw        = 100    # kW  – power allocated to CH4 destruction device(s)
-ship_fraction_of_ship_power = ship_device_power_kw / (ship_powerplant_mw * 1_000)
-                                     # fraction of the ship's power used by the device
+# 'all' merges every scenario's defaults (later entries override shared param names)
+SETTINGS['all'] = {}
+for _s in ('ship', 'solar', 'landfill', 'troposphere'):
+    SETTINGS['all'].update(SETTINGS[_s])
 
-ship_days_per_year          = 250    # days at sea per year  (14-day round trips;
-                                     # 1 day idle in port each side, no emission
-                                     # 1 day before/after port)
-ship_fraction_of_year       = ship_days_per_year / 365  # fraction of year actually operating
-
-# Annual energy budget for the ship device
-ship_energy_used_kwy        = ship_device_power_kw * ship_fraction_of_year
-                              # kWy of device energy actually consumed (ship days only)
-
-ship_energy_cost_per_year   = ship_energy_used_kwy * energy_cost_ship_per_kwy
-                              # $ – annual electricity cost at shipboard rate
-
-# Annual CH4 / CO2e removal
-ship_ch4_converted_tonnes   = ship_energy_used_kwy * ch4_per_kwy
-                              # tonnes CH4 destroyed per year (one device / ship)
-ship_co2e_converted_tonnes  = ship_ch4_converted_tonnes * co2e_ratio
-                              # equivalent tonnes CO2e
-
-# Carbon credit revenue
-ship_revenue_ch4            = ship_ch4_converted_tonnes  * credit_price_per_tonne_ch4
-ship_revenue_co2e           = ship_co2e_converted_tonnes * credit_price_per_tonne_co2e
-
-# Net economics (revenue minus energy cost)
-ship_net_ch4                = ship_revenue_ch4  - ship_energy_cost_per_year
-ship_net_co2e               = ship_revenue_co2e - ship_energy_cost_per_year
-
-# Cost per unit of CH4 / CO2e removed (sanity-check metrics)
-ship_cost_per_tonne_ch4     = ship_energy_cost_per_year / ship_ch4_converted_tonnes
-ship_cost_per_tonne_co2e    = ship_energy_cost_per_year / ship_co2e_converted_tonnes
-
-# -- Fleet scaling --
-global_ship_fleet           = 80_000   # total ocean-going vessels (approximate)
-plausible_equipped_fleet    = 10_000   # vessels plausibly fitted with devices (WAG)
-avg_power_per_ship_mw       = 1        # MW of device power per ship (WAG)
-
-fleet_total_power_mw        = plausible_equipped_fleet * avg_power_per_ship_mw
-fleet_real_power_mw         = fleet_total_power_mw * ship_fraction_of_year
-                              # MW – effective continuous power after accounting for ship days
-
-fleet_ch4_converted_tonnes  = fleet_real_power_mw * 1_000 * ch4_per_kwy
-                              # tonnes CH4/year across the plausible fleet
-fleet_co2e_converted_tonnes = fleet_ch4_converted_tonnes * co2e_ratio
-fleet_total_net_co2e        = fleet_co2e_converted_tonnes * credit_price_per_tonne_co2e
-                              # $ – total annual carbon-credit revenue for the fleet
 
 # =============================================================================
-# SECTION 7 – SOLAR FIELD AMBIENT MODEL
-# Dedicated ground-mount solar farm powering CH4 destruction at ambient concentration.
+# COMPUTE FUNCTIONS  (one per scenario)
+# Each accepts a flat dict p of all parameters and returns a dict of outputs.
 # =============================================================================
 
-solar_nameplate_mw          = 100     # MW – example solar field nameplate capacity
+def compute_ship(p):
+    ship_fraction_of_year       = p['ship_days_per_year'] / 365
+    energy_cost_ship_per_kwy    = p['energy_cost_ship_per_kwh'] * hours_per_year
+    ship_energy_used_kwy        = p['ship_device_power_kw'] * ship_fraction_of_year
+    ship_energy_cost_per_year   = ship_energy_used_kwy * energy_cost_ship_per_kwy
+    ship_ch4_converted_tonnes   = ship_energy_used_kwy * p['ch4_per_kwy']
+    ship_co2e_converted_tonnes  = ship_ch4_converted_tonnes * p['co2e_ratio']
+    ship_revenue_ch4            = ship_ch4_converted_tonnes  * p['credit_price_per_tonne_ch4']
+    ship_revenue_co2e           = ship_co2e_converted_tonnes * p['credit_price_per_tonne_co2e']
+    ship_net_ch4                = ship_revenue_ch4  - ship_energy_cost_per_year
+    ship_net_co2e               = ship_revenue_co2e - ship_energy_cost_per_year
+    ship_cost_per_tonne_ch4     = ship_energy_cost_per_year / ship_ch4_converted_tonnes
+    ship_cost_per_tonne_co2e    = ship_energy_cost_per_year / ship_co2e_converted_tonnes
+    fleet_total_power_mw        = p['plausible_equipped_fleet'] * p['avg_power_per_ship_mw']
+    fleet_real_power_mw         = fleet_total_power_mw * ship_fraction_of_year
+    fleet_ch4_converted_tonnes  = fleet_real_power_mw * 1_000 * p['ch4_per_kwy']
+    fleet_co2e_converted_tonnes = fleet_ch4_converted_tonnes * p['co2e_ratio']
+    fleet_total_net_co2e        = fleet_co2e_converted_tonnes * p['credit_price_per_tonne_co2e']
+    return {
+        'ship_fraction_of_year':         ship_fraction_of_year,
+        'ship_energy_used_kwy':          ship_energy_used_kwy,
+        'ship_energy_cost_per_year':     ship_energy_cost_per_year,
+        'ship_ch4_converted_tonnes':     ship_ch4_converted_tonnes,
+        'ship_co2e_converted_tonnes':    ship_co2e_converted_tonnes,
+        'ship_revenue_ch4':              ship_revenue_ch4,
+        'ship_revenue_co2e':             ship_revenue_co2e,
+        'ship_net_ch4':                  ship_net_ch4,
+        'ship_net_co2e':                 ship_net_co2e,
+        'ship_cost_per_tonne_ch4':       ship_cost_per_tonne_ch4,
+        'ship_cost_per_tonne_co2e':      ship_cost_per_tonne_co2e,
+        'fleet_total_power_mw':          fleet_total_power_mw,
+        'fleet_real_power_mw':           fleet_real_power_mw,
+        'fleet_ch4_converted_tonnes':    fleet_ch4_converted_tonnes,
+        'fleet_co2e_converted_tonnes':   fleet_co2e_converted_tonnes,
+        'fleet_total_net_co2e':          fleet_total_net_co2e,
+    }
 
-solar_acreage               = solar_nameplate_mw * solar_land_use_acres_per_mw
-                              # acres of land required
 
-solar_available_kw          = solar_nameplate_mw * 1_000 * solar_nameplate_ratio
-                              # kW of average usable output (nameplate × capacity factor)
+def compute_solar(p):
+    solar_available_kw            = p['solar_nameplate_mw'] * 1_000 * p['solar_nameplate_ratio']
+    solar_energy_used_kwy         = solar_available_kw              # kWy/year (kW × 1 yr)
+    solar_acreage                 = p['solar_nameplate_mw'] * p['solar_land_use_acres_per_mw']
+    solar_annual_capex            = (p['solar_nameplate_mw'] * p['solar_cap_cost_per_mw_nameplate']
+                                     / p['solar_panel_lifetime_years'])
+    solar_annual_cap_cost_per_kwy = solar_annual_capex / solar_energy_used_kwy
+    solar_ch4_converted_tonnes    = solar_energy_used_kwy * p['ch4_per_kwy']
+    solar_co2e_converted_tonnes   = solar_ch4_converted_tonnes * p['co2e_ratio']
+    solar_revenue_ch4             = solar_ch4_converted_tonnes  * p['credit_price_per_tonne_ch4']
+    solar_revenue_co2e            = solar_co2e_converted_tonnes * p['credit_price_per_tonne_co2e']
+    solar_net_ch4                 = solar_revenue_ch4  - solar_annual_capex
+    solar_net_co2e                = solar_revenue_co2e - solar_annual_capex
+    solar_cost_per_tonne_ch4      = solar_annual_capex / solar_ch4_converted_tonnes
+    solar_cost_per_tonne_co2e     = solar_annual_capex / solar_co2e_converted_tonnes
+    target_tonnes                 = p['target_megatonnes'] / megatonnes_per_tonne
+    solar_nameplate_for_target_mw = ((target_tonnes / p['ch4_per_kwy'])
+                                     / (p['solar_nameplate_ratio'] * 1_000))
+    solar_acreage_for_target      = solar_nameplate_for_target_mw * p['solar_land_use_acres_per_mw']
+    return {
+        'solar_acreage':                    solar_acreage,
+        'solar_available_kw':               solar_available_kw,
+        'solar_energy_used_kwy':            solar_energy_used_kwy,
+        'solar_annual_capex':               solar_annual_capex,
+        'solar_annual_cap_cost_per_kwy':    solar_annual_cap_cost_per_kwy,
+        'solar_ch4_converted_tonnes':       solar_ch4_converted_tonnes,
+        'solar_co2e_converted_tonnes':      solar_co2e_converted_tonnes,
+        'solar_revenue_ch4':                solar_revenue_ch4,
+        'solar_revenue_co2e':               solar_revenue_co2e,
+        'solar_net_ch4':                    solar_net_ch4,
+        'solar_net_co2e':                   solar_net_co2e,
+        'solar_cost_per_tonne_ch4':         solar_cost_per_tonne_ch4,
+        'solar_cost_per_tonne_co2e':        solar_cost_per_tonne_co2e,
+        'solar_nameplate_for_target_mw':    solar_nameplate_for_target_mw,
+        'solar_acreage_for_target':         solar_acreage_for_target,
+    }
 
-solar_energy_used_kwy       = solar_available_kw  # one year of operation
-                              # kWy available from the field (capacity × 1 year)
 
-# Annualised capital cost of the solar field
-solar_annual_cap_cost       = ((solar_nameplate_mw * solar_cap_cost_per_mw_nameplate)
-                               / solar_panel_lifetime_years) / solar_energy_used_kwy
-                              # $/kWy – capital cost amortised over panel lifetime
+def compute_landfill(p):
+    landfill_available_kw            = (p['landfill_nameplate_mw'] * 1_000
+                                        * p['solar_nameplate_ratio'])
+    landfill_energy_used_kwy         = landfill_available_kw
+    landfill_acreage                 = p['landfill_nameplate_mw'] * p['solar_land_use_acres_per_mw']
+    landfill_annual_capex            = (p['landfill_construction_premium']
+                                        * p['landfill_nameplate_mw']
+                                        * p['solar_cap_cost_per_mw_nameplate']
+                                        / p['solar_panel_lifetime_years'])
+    landfill_annual_cap_cost_per_kwy = landfill_annual_capex / landfill_energy_used_kwy
+    landfill_concentration_factor    = (1_000 * p['landfill_ch4_concentration_ppm']
+                                        / p['ch4_reference_concentration_ppb'])
+    landfill_ch4_converted_tonnes    = (landfill_energy_used_kwy * p['ch4_per_kwy']
+                                        * landfill_concentration_factor)
+    landfill_co2e_converted_tonnes   = landfill_ch4_converted_tonnes * p['co2e_ratio']
+    landfill_revenue_ch4             = landfill_ch4_converted_tonnes  * p['credit_price_per_tonne_ch4']
+    landfill_revenue_co2e            = landfill_co2e_converted_tonnes * p['credit_price_per_tonne_co2e']
+    landfill_net_ch4                 = landfill_revenue_ch4  - landfill_annual_capex
+    landfill_net_co2e                = landfill_revenue_co2e - landfill_annual_capex
+    landfill_cost_per_tonne_ch4      = landfill_annual_capex / landfill_ch4_converted_tonnes
+    landfill_cost_per_tonne_co2e     = landfill_annual_capex / landfill_co2e_converted_tonnes
+    landfill_capital_cost            = (p['landfill_construction_premium']
+                                        * p['landfill_nameplate_mw']
+                                        * p['solar_cap_cost_per_mw_nameplate'])
+    return {
+        'landfill_acreage':                  landfill_acreage,
+        'landfill_available_kw':             landfill_available_kw,
+        'landfill_energy_used_kwy':          landfill_energy_used_kwy,
+        'landfill_annual_capex':             landfill_annual_capex,
+        'landfill_annual_cap_cost_per_kwy':  landfill_annual_cap_cost_per_kwy,
+        'landfill_concentration_factor':     landfill_concentration_factor,
+        'landfill_ch4_converted_tonnes':     landfill_ch4_converted_tonnes,
+        'landfill_co2e_converted_tonnes':    landfill_co2e_converted_tonnes,
+        'landfill_revenue_ch4':              landfill_revenue_ch4,
+        'landfill_revenue_co2e':             landfill_revenue_co2e,
+        'landfill_net_ch4':                  landfill_net_ch4,
+        'landfill_net_co2e':                 landfill_net_co2e,
+        'landfill_cost_per_tonne_ch4':       landfill_cost_per_tonne_ch4,
+        'landfill_cost_per_tonne_co2e':      landfill_cost_per_tonne_co2e,
+        'landfill_capital_cost':             landfill_capital_cost,
+    }
 
-# Annual CH4 / CO2e removal
-solar_ch4_converted_tonnes  = solar_energy_used_kwy * ch4_per_kwy
-solar_co2e_converted_tonnes = solar_ch4_converted_tonnes * co2e_ratio
 
-# Carbon credit revenue
-solar_revenue_ch4           = solar_ch4_converted_tonnes  * credit_price_per_tonne_ch4
-solar_revenue_co2e          = solar_co2e_converted_tonnes * credit_price_per_tonne_co2e
+def compute_troposphere(p):
+    wh_to_remove_1ppm_troposphere = p['troposphere_volume_m3'] * p['wh_to_remove_1ppm_per_m3']
+    wy_to_remove_1ppm_troposphere = wh_to_remove_1ppm_troposphere / hours_per_year
+    nukes_needed                  = wy_to_remove_1ppm_troposphere / p['nuclear_plant_output_wy']
+    nukes_with_improvements       = (nukes_needed / p['led_efficiency_multiplier']
+                                     / p['engineering_improvement'] / p['years_to_run'])
+    total_cost                    = nukes_needed * p['cost_per_micronuke']
+    annual_cost                   = total_cost / p['years_to_run']
+    solar_wy_required             = wy_to_remove_1ppm_troposphere
+    solar_w_per_year              = solar_wy_required / p['years_to_run']
+    return {
+        'wh_to_remove_1ppm_troposphere':  wh_to_remove_1ppm_troposphere,
+        'wy_to_remove_1ppm_troposphere':  wy_to_remove_1ppm_troposphere,
+        'nukes_needed':                   nukes_needed,
+        'nukes_with_improvements':        nukes_with_improvements,
+        'total_cost':                     total_cost,
+        'annual_cost':                    annual_cost,
+        'solar_wy_required':              solar_wy_required,
+        'solar_w_per_year':               solar_w_per_year,
+    }
 
-# Net economics
-solar_net_ch4               = solar_revenue_ch4  - ship_energy_cost_per_year
-solar_net_co2e              = solar_revenue_co2e - ship_energy_cost_per_year
 
-solar_cost_per_tonne_ch4    = ship_energy_cost_per_year / solar_ch4_converted_tonnes
-solar_cost_per_tonne_co2e   = ship_energy_cost_per_year / solar_co2e_converted_tonnes
+SCENARIO_FUNCS = {
+    'ship':        compute_ship,
+    'solar':       compute_solar,
+    'landfill':    compute_landfill,
+    'troposphere': compute_troposphere,
+}
 
-# -- Scale to reach 100 megatonne target --
-# How large a solar field (in MW) is needed to destroy 100 Mt CH4/year?
-solar_nameplate_for_target_mw = (target_tonnes / ch4_per_kwy) / (solar_nameplate_ratio * 1_000)
-                                # MW nameplate needed (note: ~83 GW per spreadsheet annotation)
-solar_acreage_for_target      = solar_nameplate_for_target_mw * solar_land_use_acres_per_mw
+
+def run_scenario(setting_name, params):
+    outputs = {}
+    scenarios = list(SCENARIO_FUNCS.keys()) if setting_name == 'all' else [setting_name]
+    for name in scenarios:
+        outputs.update(SCENARIO_FUNCS[name](params))
+    return outputs
+
 
 # =============================================================================
-# SECTION 8 – LANDFILL SOLAR FIELD MODEL
-# Solar panels installed on landfill, exploiting high local CH4 concentration.
-# Higher construction cost but much higher conversion rate (500 ppm vs 2 ppm ambient).
+# TERMINAL OUTPUT
 # =============================================================================
 
-landfill_nameplate_mw       = 100     # MW – example landfill solar field nameplate
+def fmt(v, prefix='$', decimals=2):
+    return f'{prefix}{v:,.{decimals}f}' if prefix else f'{v:,.{decimals}f}'
 
-landfill_acreage            = landfill_nameplate_mw * solar_land_use_acres_per_mw
-landfill_available_kw       = landfill_nameplate_mw * 1_000 * solar_nameplate_ratio
-landfill_energy_used_kwy    = landfill_available_kw  # kWy/year
 
-# Annualised capital cost (with landfill construction premium)
-landfill_annual_cap_cost    = (landfill_construction_premium
-                               * (landfill_nameplate_mw * solar_cap_cost_per_mw_nameplate)
-                               / solar_panel_lifetime_years) / landfill_energy_used_kwy
-                              # $/kWy
+def print_results(setting_name, params, outputs):
+    print('=' * 65)
+    print('METHANE DESTRUCTION COST MODEL')
+    print(f'Setting: {setting_name}')
+    print('=' * 65)
 
-# CH4 conversion is proportional to concentration relative to the reference
-landfill_concentration_factor = (1_000 * landfill_ch4_concentration_ppm
-                                 / ch4_reference_concentration_ppb)
-                                # dimensionless scale factor; 500 ppm ÷ 2 ppb reference
+    if 'ship_energy_used_kwy' in outputs:
+        print('\n--- Ship Ambient (single device) ---')
+        print(f"  Energy used:                    {outputs['ship_energy_used_kwy']:.3f} kWy")
+        print(f"  Energy cost/year:              {fmt(outputs['ship_energy_cost_per_year'])}")
+        print(f"  CH4 converted:                  {outputs['ship_ch4_converted_tonnes']:.4f} t CH4")
+        print(f"  CO2e converted:                 {outputs['ship_co2e_converted_tonnes']:.4f} t CO2e")
+        print(f"  Revenue (CH4 credits):         {fmt(outputs['ship_revenue_ch4'])}")
+        print(f"  Revenue (CO2e credits):        {fmt(outputs['ship_revenue_co2e'])}")
+        print(f"  Net $ (CH4 basis):             {fmt(outputs['ship_net_ch4'])}")
+        print(f"  Net $ (CO2e basis):            {fmt(outputs['ship_net_co2e'])}")
+        print(f"  Cost/tonne CH4:                {fmt(outputs['ship_cost_per_tonne_ch4'])}")
+        print(f"  Cost/tonne CO2e:               {fmt(outputs['ship_cost_per_tonne_co2e'])}")
+        print(f"  Fleet CH4/year:                 {outputs['fleet_ch4_converted_tonnes']:,.1f} t")
+        print(f"  Fleet CO2e/year:                {outputs['fleet_co2e_converted_tonnes']:,.1f} t")
+        print(f"  Fleet CO2e revenue:            {fmt(outputs['fleet_total_net_co2e'])}")
 
-landfill_ch4_converted_tonnes  = (landfill_energy_used_kwy * ch4_per_kwy
-                                  * landfill_concentration_factor)
-                                 # tonnes CH4/year – boosted by high local concentration
-landfill_co2e_converted_tonnes = landfill_ch4_converted_tonnes * co2e_ratio
+    if 'solar_energy_used_kwy' in outputs:
+        print('\n--- Solar Field Ambient ---')
+        print(f"  Acreage:                        {outputs['solar_acreage']:,.0f} acres")
+        print(f"  Energy used:                    {outputs['solar_energy_used_kwy']:,.0f} kWy")
+        print(f"  Annual capex:                  {fmt(outputs['solar_annual_capex'])}")
+        print(f"  CH4 converted:                  {outputs['solar_ch4_converted_tonnes']:,.1f} t CH4")
+        print(f"  CO2e converted:                 {outputs['solar_co2e_converted_tonnes']:,.1f} t CO2e")
+        print(f"  Revenue (CH4):                 {fmt(outputs['solar_revenue_ch4'])}")
+        print(f"  Revenue (CO2e):                {fmt(outputs['solar_revenue_co2e'])}")
+        print(f"  Net $ (CH4):                   {fmt(outputs['solar_net_ch4'])}")
+        print(f"  Net $ (CO2e):                  {fmt(outputs['solar_net_co2e'])}")
+        print(f"  Cost/tonne CH4:                {fmt(outputs['solar_cost_per_tonne_ch4'])}")
+        print(f"  Cost/tonne CO2e:               {fmt(outputs['solar_cost_per_tonne_co2e'])}")
+        print(f"  MW for {params.get('target_megatonnes',100)} Mt target:          "
+              f"{outputs['solar_nameplate_for_target_mw']:,.0f} MW")
 
-# Carbon credit revenue
-landfill_revenue_ch4        = landfill_ch4_converted_tonnes  * credit_price_per_tonne_ch4
-landfill_revenue_co2e       = landfill_co2e_converted_tonnes * credit_price_per_tonne_co2e
+    if 'landfill_energy_used_kwy' in outputs:
+        print('\n--- Landfill Solar Field ---')
+        print(f"  Concentration factor:           {outputs['landfill_concentration_factor']:,.0f}x")
+        print(f"  Annual capex:                  {fmt(outputs['landfill_annual_capex'])}")
+        print(f"  CH4 converted:                  {outputs['landfill_ch4_converted_tonnes']:,.1f} t CH4")
+        print(f"  CO2e converted:                 {outputs['landfill_co2e_converted_tonnes']:,.1f} t CO2e")
+        print(f"  Revenue (CH4):                 {fmt(outputs['landfill_revenue_ch4'])}")
+        print(f"  Revenue (CO2e):                {fmt(outputs['landfill_revenue_co2e'])}")
+        print(f"  Net $ (CH4):                   {fmt(outputs['landfill_net_ch4'])}")
+        print(f"  Net $ (CO2e):                  {fmt(outputs['landfill_net_co2e'])}")
+        print(f"  Total capital cost:            {fmt(outputs['landfill_capital_cost'])}")
 
-# Net economics
-landfill_net_ch4            = landfill_revenue_ch4  - ship_energy_cost_per_year
-landfill_net_co2e           = landfill_revenue_co2e - ship_energy_cost_per_year
+    if 'wy_to_remove_1ppm_troposphere' in outputs:
+        print('\n--- Global / Troposphere ---')
+        print(f"  Energy to remove 1 ppm:         {outputs['wy_to_remove_1ppm_troposphere']:.3e} Wy")
+        print(f"  Nuclear plants required:        {outputs['nukes_needed']:.3e}")
+        print(f"  With LED + engineering:         {outputs['nukes_with_improvements']:.3e}")
+        print(f"  Total cost:                    {fmt(outputs['total_cost'])}")
+        print(f"  Annual cost:                   {fmt(outputs['annual_cost'])}")
+        print(f"  Solar power needed:             {outputs['solar_w_per_year']:.3e} W")
 
-landfill_cost_per_tonne_ch4  = ship_energy_cost_per_year / landfill_ch4_converted_tonnes
-landfill_cost_per_tonne_co2e = ship_energy_cost_per_year / landfill_co2e_converted_tonnes
+    print('=' * 65)
 
-landfill_capital_cost        = landfill_nameplate_mw * solar_cap_cost_per_mw_nameplate
-                               # $ – total upfront capital for the landfill solar field
-
-# =============================================================================
-# SECTION 9 – TROPOSPHERE / GLOBAL SUMMARY
-# Back-of-envelope estimate of the scale of intervention needed to move
-# the global atmospheric CH4 concentration by 1 ppm.
-# Translated from the "Summary Master" sheet.
-# =============================================================================
-
-troposphere_volume_m3       = 1e18   # m³  – approximate volume of the troposphere
-
-wh_to_remove_1ppm_per_m3    = 50     # Wh  – energy to remove 1 ppm CH4 from 1 m³ of air
-                                     # (derived from smog-chamber experiments)
-
-wh_to_remove_1ppm_troposphere = troposphere_volume_m3 * wh_to_remove_1ppm_per_m3
-                                # Wh – total energy to reduce tropospheric CH4 by 1 ppm
-
-wy_to_remove_1ppm_troposphere = wh_to_remove_1ppm_troposphere / hours_per_year
-                                # Wy (watt-years) of continuous power required
-
-nuclear_plant_output_wy     = 30_000_000   # Wy – approximate annual output of one nuclear plant
-led_efficiency_multiplier   = 1_000        # LED devices are ~1000× more efficient than bulbs
-
-nukes_needed                = wy_to_remove_1ppm_troposphere / nuclear_plant_output_wy
-                              # number of nuclear plants required (without LED improvement)
-
-years_to_run                = 10     # time horizon for the removal campaign
-engineering_improvement     = 10     # further X improvement from better device engineering
-
-# Total nukes accounting for LED efficiency and engineering improvement
-nukes_with_improvements     = (nukes_needed / led_efficiency_multiplier
-                               / engineering_improvement / years_to_run)
-
-cost_per_micronuke          = 20_000_000   # $ – capital cost of a small modular / micro reactor
-total_cost                  = nukes_needed * cost_per_micronuke
-annual_cost                 = total_cost / years_to_run
-
-# Solar equivalent
-solar_wy_required           = wy_to_remove_1ppm_troposphere
-solar_w_per_year            = solar_wy_required / years_to_run  # average watts sustained over campaign
 
 # =============================================================================
-# SECTION 10 – PRINT RESULTS
+# CLI + TSV OUTPUT
 # =============================================================================
 
-def fmt(value, prefix="$", decimals=2):
-    """Format a number with thousands separators and optional prefix."""
-    return f"{prefix}{value:,.{decimals}f}" if prefix else f"{value:,.{decimals}f}"
+def parse_range_arg(s):
+    """Parse 'nnn' -> [float] or '[low,high,step]' -> [float, ...]."""
+    s = s.strip()
+    if s.startswith('[') and s.endswith(']'):
+        parts = s[1:-1].split(',')
+        if len(parts) != 3:
+            raise ValueError(f"Range must be [low,high,step], got: {s}")
+        low, high, step = float(parts[0]), float(parts[1]), float(parts[2])
+        values, v = [], low
+        while v <= high + step * 1e-9:
+            values.append(round(v, 12))
+            v += step
+        if not values:
+            raise ValueError(f"Empty range: {s}")
+        return values
+    return [float(s)]
 
-print("=" * 65)
-print("METHANE DESTRUCTION COST MODEL – RESULTS")
-print("=" * 65)
 
-print("\n--- Conversion Ratio ---")
-print(f"  CH4 destroyed per kWy:           {ch4_per_kwy} tonnes CH4")
-print(f"  CO2e destroyed per kWy:          {co2e_per_kwy} tonnes CO2e")
-print(f"  Energy per tonne CH4:            {j_per_tonne_ch4/kWh:,.0f} kWh")
+def main():
+    parser = argparse.ArgumentParser(
+        description='Methane Destruction Cost Model',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__)
+    parser.add_argument('--setting', default='all',
+                        choices=list(SETTINGS.keys()),
+                        help='Named parameter bundle (default: all)')
+    known, remaining = parser.parse_known_args()
+    setting_name = known.setting
 
-print("\n--- Ship Ambient (single device, 100 kW, 250 ship-days/yr) ---")
-print(f"  Energy used:                     {ship_energy_used_kwy:.3f} kWy")
-print(f"  Energy cost/year:               {fmt(ship_energy_cost_per_year)}")
-print(f"  CH4 converted:                   {ship_ch4_converted_tonnes:.4f} tonnes CH4")
-print(f"  CO2e converted:                  {ship_co2e_converted_tonnes:.4f} tonnes CO2e")
-print(f"  Revenue (CH4 credits):          {fmt(ship_revenue_ch4)}")
-print(f"  Revenue (CO2e credits):         {fmt(ship_revenue_co2e)}")
-print(f"  Net $ (CH4 basis):              {fmt(ship_net_ch4)}")
-print(f"  Net $ (CO2e basis):             {fmt(ship_net_co2e)}")
-print(f"  Cost per tonne CH4:             {fmt(ship_cost_per_tonne_ch4)}")
-print(f"  Cost per tonne CO2e:            {fmt(ship_cost_per_tonne_co2e)}")
+    base_params = {**PRIMARY_INPUTS, **SETTINGS[setting_name]}
 
-print(f"\n  --- Fleet scale ({plausible_equipped_fleet:,} ships, {avg_power_per_ship_mw} MW each) ---")
-print(f"  Fleet CH4 converted/year:        {fleet_ch4_converted_tonnes:,.1f} tonnes")
-print(f"  Fleet CO2e converted/year:       {fleet_co2e_converted_tonnes:,.1f} tonnes")
-print(f"  Fleet total CO2e revenue:       {fmt(fleet_total_net_co2e)}")
+    # Parse remaining args as --param_name value_or_range pairs
+    overrides = {}
+    i = 0
+    while i < len(remaining):
+        tok = remaining[i]
+        if not tok.startswith('--'):
+            parser.error(f"Unexpected token: {tok!r}")
+        param_name = tok[2:]
+        if i + 1 >= len(remaining):
+            parser.error(f"--{param_name} requires a value")
+        try:
+            overrides[param_name] = parse_range_arg(remaining[i + 1])
+        except ValueError as e:
+            parser.error(str(e))
+        i += 2
 
-print("\n--- Solar Field Ambient (100 MW nameplate) ---")
-print(f"  Acreage required:                {solar_acreage:,.0f} acres")
-print(f"  Energy used:                     {solar_energy_used_kwy:,.0f} kWy")
-print(f"  CH4 converted:                   {solar_ch4_converted_tonnes:,.1f} tonnes")
-print(f"  CO2e converted:                  {solar_co2e_converted_tonnes:,.1f} tonnes")
-print(f"  Revenue (CH4):                  {fmt(solar_revenue_ch4)}")
-print(f"  Revenue (CO2e):                 {fmt(solar_revenue_co2e)}")
-print(f"  Cost per tonne CH4:             {fmt(solar_cost_per_tonne_ch4)}")
-print(f"  MW nameplate for 100 Mt target:  {solar_nameplate_for_target_mw:,.0f} MW (~83 GW)")
+    # Warn about unrecognised parameter names
+    known_params = set(PRIMARY_INPUTS) | set(SETTINGS['all'])
+    for pname in overrides:
+        if pname not in known_params:
+            print(f"Warning: '{pname}' is not a recognised parameter name", file=sys.stderr)
 
-print("\n--- Landfill Solar Field (100 MW nameplate, 500 ppm CH4) ---")
-print(f"  Concentration factor vs ambient: {landfill_concentration_factor:,.0f}×")
-print(f"  CH4 converted:                   {landfill_ch4_converted_tonnes:,.1f} tonnes")
-print(f"  CO2e converted:                  {landfill_co2e_converted_tonnes:,.1f} tonnes")
-print(f"  Revenue (CH4):                  {fmt(landfill_revenue_ch4)}")
-print(f"  Revenue (CO2e):                 {fmt(landfill_revenue_co2e)}")
-print(f"  Capital cost:                   {fmt(landfill_capital_cost)}")
+    # Cartesian product of all range overrides
+    if overrides:
+        sweep_names  = list(overrides.keys())
+        sweep_combos = list(itertools.product(*[overrides[n] for n in sweep_names]))
+    else:
+        sweep_names, sweep_combos = [], [()]
 
-print("\n--- Global / Troposphere Summary ---")
-print(f"  Energy to remove 1 ppm tropospheric CH4:  {wy_to_remove_1ppm_troposphere:.3e} Wy")
-print(f"  Nuclear plants required (no LED gains):   {nukes_needed:.3e}")
-print(f"  With LED + engineering improvements:      {nukes_with_improvements:.3e}")
-print(f"  Total cost estimate:                     {fmt(total_cost)}")
-print(f"  Annual cost over {years_to_run} years:             {fmt(annual_cost)}")
-print(f"  Solar power needed (averaged):            {solar_w_per_year:.3e} W")
-print("=" * 65)
+    # Compute one result per parameter combination
+    results = []
+    for combo in sweep_combos:
+        p = dict(base_params)
+        for name, val in zip(sweep_names, combo):
+            p[name] = val
+        outputs = run_scenario(setting_name, p)
+        results.append((p, outputs))
+
+    # Print to terminal
+    for p, outputs in results:
+        print_results(setting_name, p, outputs)
+
+    # Write timestamped TSV
+    os.makedirs('results', exist_ok=True)
+    ts       = datetime.now().strftime('%Y%m%d_%H%M%S')
+    tsv_path = os.path.join('results', f'results_{setting_name}_{ts}.tsv')
+
+    param_keys  = list(base_params.keys())
+    output_keys = list(results[0][1].keys())
+    fieldnames  = ['setting'] + param_keys + output_keys
+
+    with open(tsv_path, 'w', newline='') as fh:
+        writer = csv.DictWriter(fh, fieldnames=fieldnames, delimiter='\t')
+        writer.writeheader()
+        for p, outputs in results:
+            row = {'setting': setting_name}
+            row.update({k: p.get(k, '') for k in param_keys})
+            row.update(outputs)
+            writer.writerow(row)
+
+    n = len(results)
+    print(f"\nResults written to: {tsv_path}  ({n} row{'s' if n != 1 else ''})")
+
+
+if __name__ == '__main__':
+    main()
