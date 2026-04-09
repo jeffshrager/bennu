@@ -153,7 +153,7 @@ ship_cost_per_tonne_co2e    = ship_energy_cost_per_year / ship_co2e_converted_to
 
 # -- Fleet scaling --
 global_ship_fleet           = 80_000   # total ocean-going vessels (approximate)
-plausible_equipped_fleet    = 1   # vessels plausibly fitted with devices (WAG)
+plausible_equipped_fleet    = 10_000   # vessels plausibly fitted with devices (WAG)
 avg_power_per_ship_mw       = 1        # MW of device power per ship (WAG)
 
 fleet_total_power_mw        = plausible_equipped_fleet * avg_power_per_ship_mw
