@@ -1,10 +1,10 @@
-#Updated by Jeff on 20251210
+#Updated by Jeff on 20260413
 
 =====================================================================
 
 #Running studies
 
-LocaL: There is a dir under the repo called 'experiments'. In that are
+Local: There is a dir under the repo called 'experiments'. In that are
 dirs that are named by the date of the experiment. (And sometimes
 including a hint about what that experimenet is about, or something to
 uniqueify the name if there are multuiple studies run on the same
