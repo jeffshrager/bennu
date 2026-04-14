@@ -1,6 +1,12 @@
 #Updated by Jeff on 20260413
 
 =====================================================================
+How to connect to the remora:
+
+
+
+
+=====================================================================
 
 #Running studies
 
@@ -152,7 +158,7 @@ time	methane	windspeed	current
 
 =====================================================================
 
-#Connecting to the remora (See ~/howto)
+#Connecting to the remora (See ~/howto or above)
 
 Remember you're running ssh from a machine you ssh'd to, so if you
 simpy type ~. you will be disconnected from cataphract and your
