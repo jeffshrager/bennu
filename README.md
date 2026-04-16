@@ -1,10 +1,43 @@
 #Updated by Jeff on 20260413
 
 =====================================================================
-How to connect to the remora:
+How to connect to the remora (from ~howto -- check to updates there if
+this seems not to work):
 
+Connenting to the Remora:
 
+Connect first to the rely:
 
+    ssh bennu@64.13.145.93
+
+then to the pi:
+
+    ssh localhost -p 21965
+
+Note that you can execute remote commands as:
+
+sh bennu@64.13.145.93 ssh localhost -p 21965 ls f*
+
+But if you do
+
+    sh bennu@64.13.145.93 ssh localhost -p 21965 ls f*
+
+it will send the names of every file on your local directory starting
+with f.  You want to do something like
+
+    sh bennu@64.13.145.93 "ssh localhost -p 21965 'rm f*'"
+
+To get files off the lampray from the Pi do:
+
+   scp myfile 
+
+then copy of to your local machine FROM your local machine:
+
+   scp bennu@64.13.145.93:myfile .
+
+Almost unbelivably, this works now too:
+
+   scp "rome:/home/bennu/software/bennu/*.log" .
 
 =====================================================================
 
