@@ -14,6 +14,39 @@ then to the pi:
 
     ssh localhost -p 21965
 
+Then
+
+    cd software/bennu
+    rm lamp_controller.log*
+    cd experiments
+    mkdir [my experiment]
+    cd [my experiment]
+    cat > run.sh
+    [paste in the new run.sh]
+    ^d
+    cat run.sh   # Make sure it's right
+    nohup bash run.sh > out.log 2>&1 &
+    cd ../..
+    tail -f lamp_controller.log
+ and/or
+    tail -f experiment/[myexpr]/out.log # This is the run.sh log
+
+Note that if the lamp_controller.log isn't logging kill and restart python3 run.py
+
+### !!! NOTE THE DIFFERENCE BETWEEN RUN.PY AND RUN.SH:
+###     run.py is the main controller, run.sh s your program
+
+If run.py seems not to be logging, kill it from software/bennu:
+
+   cd software/bennu  # Or anyway, get there:
+   ps -aux | grep -i run.py
+   # Get the job id: 1234
+   kill -hup 1234
+
+The daemon should automatically restart it.
+
+-------------------
+   
 Note that you can execute remote commands as:
 
 sh bennu@64.13.145.93 ssh localhost -p 21965 ls f*
