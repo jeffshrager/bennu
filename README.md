@@ -1,5 +1,7 @@
 #Updated by Jeff on 20260413
 
+BEWARE THE CHRONJOB REBOOT! (See below)
+
 =====================================================================
 How to connect to the remora (from ~howto -- check to updates there if
 this seems not to work):
@@ -105,6 +107,24 @@ should do is to turn the lights off. the way you do that is:
 HOWEVER: Most experiments don't end normally -- mostly they are
 programmed to run as long as possible, and eventually they come up
 against the chronjob reboot (currently every 2 hours).
+
+?????????????????? The chronjob reboot ??????????????????
+
+Yeah:
+
+cat /var/spool/cron/crontabs/root
+
+...
+0 */2 * * * sudo /sbin/shutdown -r +10 "System rebooting soon!"
+...
+
+If you want to edit this (for example, comment it out to stop the
+system from rebooting every two hours!) you need to use:
+
+sudo crontab -e
+
+(Thank god that will start emacs, but also you need to do it NOT from
+another emacs shell, for obvious reaosns.)
 
 *********************************************************************
 IMPORTANT!!! When your experiment ends, by whatever mechaism, be sure
