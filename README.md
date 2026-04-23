@@ -126,6 +126,16 @@ sudo crontab -e
 (Thank god that will start emacs, but also you need to do it NOT from
 another emacs shell, for obvious reaosns.)
 
+!!! At the moment I have it hacked for Pacific traversal to reboot
+around midnight -- or at least during dark hours but where the clock
+is in PST. (This was really fucking hard to figure out!)
+
+#0 */2 * * * sudo /sbin/shutdown -r +10 "System rebooting soon!"
+# This causes a	reboot sometime	at night during a pacific traversal.
+# It's a hack in order to get the thing	rebooted at least once/day...and
+# at night, so I can run all day experiments during the	day.
+0 4 * * * sudo /sbin/shutdown -r +10 "System rebooting soon!"
+
 *********************************************************************
 IMPORTANT!!! When your experiment ends, by whatever mechaism, be sure
 to do the above, otherwise the lamps will be left in whatever was the

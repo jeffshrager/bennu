@@ -34,6 +34,7 @@ DEFAULT_SAMPLE_INTERVAL = 15.0
 
 # Config file name (in run directory / current working dir)
 CONFIG_FILE = "lamp.config"
+ALL_OFF_CONFIG_FILE = "lamp_all_off.config"
 
 # Log file (in run directory)
 LOG_FILE = "lamp_controller.log"
@@ -245,6 +246,25 @@ def log_sensor_readings():
         fields,
     )
 
+# ----------------------------------------------------------------------
+# When we start we force all the lamps off by forcing in all_off_config
+# ----------------------------------------------------------------------
+
+def initialize_config_to_all_off():
+    """On startup, replace CONFIG_FILE with ALL_OFF_CONFIG_FILE"""
+    if not os.path.exists(ALL_OFF_CONFIG_FILE):
+        logging.error("All-off config '%s' not found; not modifying '%s'.",
+                      ALL_OFF_CONFIG_FILE, CONFIG_FILE)
+        return
+
+    try:
+        with open(ALL_OFF_CONFIG_FILE, "r") as src, open(CONFIG_FILE, "w") as dst:
+            dst.write(src.read())
+        logging.info("Initialized '%s' from '%s' (all lamps OFF).",
+                     CONFIG_FILE, ALL_OFF_CONFIG_FILE)
+    except Exception as e:
+        logging.error("Failed to initialize config from '%s': %s",
+                      ALL_OFF_CONFIG_FILE, e)
 
 # ----------------------------------------------------------------------
 # MAIN LOOP
@@ -255,6 +275,7 @@ def main():
 
     setup_logging()
     logging.info("=== Lamp controller starting up ===")
+    initialize_config_to_all_off()
 
     try:
         from methane_sensor import init_methane
