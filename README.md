@@ -27,6 +27,8 @@ then to the pi:
 
     ssh localhost -p 21965
 
+ssh bennu@64.13.145.93 ssh localhost -p 21965
+
 Then
 
     cd software/bennu
