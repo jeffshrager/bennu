@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python *)",
+      "Bash(python3 *)",
+      "Bash(pip3 install *)",
+      "Bash(/usr/local/opt/python@3.12/bin/pip3 install *)"
+    ]
+  }
+}

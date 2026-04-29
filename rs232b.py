@@ -25,9 +25,9 @@ BAUD = 9600
 # Log file
 # ---------------------------------------------------------------------------
 os.makedirs('results', exist_ok=True)
-log_path = os.path.join('results', datetime.now().strftime('%Y%m%d_%H%M%S') + '.csv')
+log_path = os.path.join('results', datetime.now().strftime('%Y%m%d_%H%M%S') + '.tsv')
 log_file = open(log_path, 'w', buffering=1)   # line-buffered
-log_file.write('timestamp,value\n')
+log_file.write('timestamp\tvalue\n')
 print(f'Logging to {log_path}')
 
 # ---------------------------------------------------------------------------
@@ -57,7 +57,7 @@ def _serial_reader():
                 ts = datetime.now()
                 with _lock:
                     _vals.append(value)
-                log_file.write(f'{ts.isoformat()},{value}\n')
+                log_file.write(f'{ts.isoformat()}\t{value}\n')
                 print(f'{ts.isoformat()}  {value:.6g}')
 
 threading.Thread(target=_serial_reader, daemon=True).start()
@@ -98,6 +98,9 @@ tb_ymax = TextBox(ax_ymax, '', initial=str(DEFAULT_YMAX))
 
 fig.text(0.27, 0.045, '← type a value and press Enter', fontsize=8,
          va='center', color='gray')
+
+time_text = fig.text(0.88, 0.025, '', fontsize=10, ha='right', va='center',
+                     family='monospace', color='dimgray')
 
 # ---------------------------------------------------------------------------
 # Control state (plain mutable container so callbacks can write to it)
@@ -158,6 +161,7 @@ def _animate(_frame):
     line_avg.set_data(xs, avg)
 
     ax.set_xlim(0, max(n - 1, 1))
+    time_text.set_text(datetime.now().strftime('%Y-%m-%d  %H:%M:%S'))
     ax.set_title(
         f'RS232 live  |  {n} pts shown  |  avg over {avg_w}  |  '
         f'Y=[{cfg["ymin"]}, {cfg["ymax"]}]',

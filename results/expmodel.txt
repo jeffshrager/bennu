@@ -1,0 +1,13 @@
+Model
+a	111500	112000	off	slow	passive
+b	112000	112500	on	slow	passive
+c	113000	113500	on	fast	passive
+d	113500	114000	off	fast	passive
+e	115000	115500	on	fast	pump
+f	115500	120000	off	fast	pump
+g	120000	120700	off	slow	pump
+h	120700	121300	on	slow	pump
+i	121300	121800	off	slow	pump
+j	121800	122300	on	slow	pump
+Tests
+g,i	h,j
