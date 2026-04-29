@@ -1,0 +1,111 @@
+Session Summary — 2026-04-29 (Session 1)
+=========================================
+
+Project: remora (ax* scripts — RS232 data acquisition and analysis)
+
+--- What existed at session start ---
+
+  rs232a.py: minimal serial reader for /dev/cu.usbserial-BG011WD7 at 9600 baud.
+    Reads packets delimited by { }, extracts measurement packets (byte 1 == 'M'),
+    unpacks a little-endian float from bytes 6-9, prints to stdout.
+    No logging, no visualization.
+
+  results/ax1.tsv: pre-existing combined data log (7691 samples,
+    2026-04-29 11:15:34 -> 12:23:18).
+
+  results/expmodel.txt: pre-existing experiment model (TSV, two-section format
+    with Model and Tests sections — see below).
+
+--- What happened this session ---
+
+  1. Created axb.py (originally rs232b.py)
+     Real-time data logger + live matplotlib plot, reading the same serial source
+     as axa.py.
+
+     Logging:
+       - Creates results/ if absent.
+       - Opens a timestamped .tsv file (YYYYMMDD_HHMMSS.tsv) on startup.
+       - Header: timestamp<TAB>value
+       - Each row: ISO-format timestamp<TAB>float value
+       - Line-buffered so data is safe on Ctrl-C.
+
+     Real-time plot (matplotlib FuncAnimation, 200 ms interval):
+       - Raw data in blue, running causal average in red.
+       - Interactive controls embedded in the figure (bottom 40%):
+           Window slider (10-500): number of samples shown on the X axis.
+           Avg slider (1-200): width of the running average.
+           Y min / Y max text boxes: type a value and press Enter to rescale
+             the Y axis instantly.
+           Current time display (lower-right, monospaced, updates each frame).
+       - Title bar shows live stats: n points shown, avg width, Y range.
+       - Serial reading runs in a daemon thread; plot runs on the main thread.
+         Shared data protected by threading.Lock.
+
+     Default starting values are constants at the top of the file:
+       DEFAULT_YMIN=0, DEFAULT_YMAX=100, DEFAULT_WINDOW=100, DEFAULT_AVG=20.
+
+  2. Created axanal.py (originally expanalyze.py)
+     Reads a results directory containing a .tsv data log and expmodel.txt,
+     segments the data per the model, computes per-segment stats, and runs
+     Welch's t-tests for any test pairs specified in the model.
+
+     expmodel.txt format (TSV, two sections):
+       Model
+       <label>  <start_HHMMSS>  <end_HHMMSS>  <cond1>  <cond2>  ...
+       ...
+       Tests
+       <labels_A>  <labels_B>
+       ...
+       where labels_A and labels_B are comma-joined segment label lists.
+       Segment times are HHMMSS on the same calendar date as the data file.
+       Boundary matching: nearest sample index to each edge time (no interpolation).
+
+     Output (printed and written to results/expmodel_stats.txt):
+       Section 1 — Segment Stats table:
+         label, start, end, conditions, n, min, max, mean, sd, actual timestamp range
+       Section 2 — T-tests (Welch):
+         For each test row, combines all values from left-side labels into one
+         group and all values from right-side labels into another, then reports
+         n, mean, sd for each group plus t, p, and significance stars.
+
+     Welch's t-test implemented from scratch (no scipy dependency) using the
+     regularized incomplete beta function via continued fractions (Numerical
+     Recipes algorithm). scipy was installed but its C extensions were broken
+     on this machine.
+
+     CLI args:
+       --resultsdir DIR   directory to find ax1.tsv and expmodel.txt, and
+                          where expmodel_stats.txt is written (default: results/)
+       [tsv]              optional positional override for the data file path
+       [model]            optional positional override for the model file path
+
+  3. Renamed files
+       rs232a.py   -> axa.py
+       rs232b.py   -> axb.py
+       expanalyze.py -> axanal.py
+
+--- Results from first axanal run ---
+
+  Segment stats (10 segments, labels a-j):
+    All segments ~2.23-2.38 mean value, SD ~0.083-0.095.
+    Segment lengths 497-863 samples (approx 5-7 min each at ~2 samples/sec).
+
+  T-test: g+i (off/slow/pump, n=1479) vs h+j (on/slow/pump, n=1357)
+    left  mean=2.2562  sd=0.0916
+    right mean=2.2382  sd=0.0919
+    t=5.215  p<0.000001  ***
+    Interpretation: off-state readings significantly higher than on-state
+    in the slow/pump condition.
+
+--- Files at session end ---
+
+  axa.py       — original serial reader (read-only reference; unchanged)
+  axb.py       — serial logger + real-time plot with interactive controls
+  axanal.py    — experiment model analyzer with per-segment stats and t-tests
+  results/ax1.tsv          — combined data log
+  results/expmodel.txt     — experiment model (Model + Tests sections)
+  results/expmodel_stats.txt — output from axanal
+
+--- Next steps (not started) ---
+
+  None defined at session end.

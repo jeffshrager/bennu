@@ -10,4 +10,6 @@ h	120700	121300	on	slow	pump
 i	121300	121800	off	slow	pump
 j	121800	122300	on	slow	pump
 Tests
+a	b
+c	d
 g,i	h,j

@@ -15,6 +15,16 @@
 
 === T-tests (Welch) ===
 
+  a  vs  b
+    left : n=497  mean=2.3779  sd=0.0826
+    right: n=617  mean=2.3659  sd=0.0833
+    t=2.3975  p=0.016680  *
+
+  c  vs  d
+    left : n=616  mean=2.3519  sd=0.0868
+    right: n=617  mean=2.3205  sd=0.0857
+    t=6.3968  p=0.000000  ***
+
   g+i  vs  h+j
     left : n=1479  mean=2.2562  sd=0.0916
     right: n=1357  mean=2.2382  sd=0.0919
