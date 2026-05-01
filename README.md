@@ -6,10 +6,9 @@ Quick hits:
 
 Fast on:
 
-jeffshrager@MacBook-Pro-6 remora_repo % ssh bennu@64.13.145.93
-bennu@relay:~$ ssh localhost -p 21965
-bennu@bennu1:~$ cd software/bennu
-bennu@bennu1:~/software/bennu$ tail -f lamp_controller.log
+ssh bennu@64.13.145.93
+ssh localhost -p 21965
+software/bennu
 
 Quick reboot: sudo shutdown -r now
 

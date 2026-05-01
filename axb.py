@@ -13,8 +13,8 @@ from matplotlib.widgets import Slider, TextBox
 # ---------------------------------------------------------------------------
 # Starting defaults (adjust here or via the on-screen controls at runtime)
 # ---------------------------------------------------------------------------
-DEFAULT_YMIN   = 0.0
-DEFAULT_YMAX   = 100.0
+DEFAULT_YMIN   = 1.8
+DEFAULT_YMAX   = 2.6
 DEFAULT_WINDOW = 100      # samples shown on the plot
 DEFAULT_AVG    = 20       # rolling-average width in samples
 

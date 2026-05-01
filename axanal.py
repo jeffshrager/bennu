@@ -224,7 +224,11 @@ if tests:
         ln, lmean, lsd = len(left_vals),  sum(left_vals)  / len(left_vals),  math.sqrt(sum((v - sum(left_vals)/len(left_vals))**2  for v in left_vals)  / len(left_vals))
         rn, rmean, rsd = len(right_vals), sum(right_vals) / len(right_vals), math.sqrt(sum((v - sum(right_vals)/len(right_vals))**2 for v in right_vals) / len(right_vals))
 
-        emit(f"  {left_str}  vs  {right_str}")
+        def cond_desc(labels):
+            unique = list(dict.fromkeys('/'.join(segments[l]['conditions']) for l in labels))
+            return ' & '.join(unique)
+
+        emit(f"  {left_str}  vs  {right_str}  ({cond_desc(left_labels)}  vs  {cond_desc(right_labels)})")
         emit(f"    left : n={ln}  mean={lmean:.4f}  sd={lsd:.4f}")
         emit(f"    right: n={rn}  mean={rmean:.4f}  sd={rsd:.4f}")
         emit(f"    t={t:.4f}  p={p:.6f}{'  ***' if p < 0.001 else '  **' if p < 0.01 else '  *' if p < 0.05 else ''}")
