@@ -8,7 +8,7 @@ Fast on:
 
 ssh bennu@64.13.145.93
 ssh localhost -p 21965
-software/bennu
+cd software/bennu
 
 Quick reboot: sudo shutdown -r now
 
