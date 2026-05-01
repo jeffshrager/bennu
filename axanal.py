@@ -22,53 +22,11 @@ import math
 import os
 import argparse
 from datetime import datetime
-
-# ---------------------------------------------------------------------------
-# Welch's t-test (no scipy needed)
-# Uses the incomplete beta function via continued fractions (Numerical Recipes)
-# ---------------------------------------------------------------------------
-def _betacf(a, b, x):
-    MAXIT, EPS, FPMIN = 200, 3e-7, 1e-30
-    qab, qap, qam = a + b, a + 1.0, a - 1.0
-    c, d = 1.0, max(1.0 - qab * x / qap, FPMIN)
-    d, h = 1.0 / d, 1.0 / d
-    for m in range(1, MAXIT + 1):
-        m2 = 2 * m
-        aa = m * (b - m) * x / ((qam + m2) * (a + m2))
-        d = 1.0 / max(1.0 + aa * d, FPMIN)
-        c = max(1.0 + aa / c, FPMIN)
-        h *= d * c
-        aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2))
-        d = 1.0 / max(1.0 + aa * d, FPMIN)
-        c = max(1.0 + aa / c, FPMIN)
-        delta = d * c
-        h *= delta
-        if abs(delta - 1.0) < EPS:
-            break
-    return h
-
-def _betai(a, b, x):
-    if x <= 0.0: return 0.0
-    if x >= 1.0: return 1.0
-    lbeta = math.lgamma(a + b) - math.lgamma(a) - math.lgamma(b)
-    if x < (a + 1.0) / (a + b + 2.0):
-        return math.exp(lbeta + a * math.log(x) + b * math.log(1.0 - x)) * _betacf(a, b, x) / a
-    else:
-        return 1.0 - math.exp(lbeta + b * math.log(1.0 - x) + a * math.log(x)) * _betacf(b, a, 1.0 - x) / b
+from scipy.stats import ttest_ind
 
 def welch_ttest(a, b):
-    """Two-tailed Welch's t-test. Returns (t, p)."""
-    na, nb = len(a), len(b)
-    ma, mb = sum(a) / na, sum(b) / nb
-    va = sum((v - ma) ** 2 for v in a) / (na - 1)
-    vb = sum((v - mb) ** 2 for v in b) / (nb - 1)
-    se = math.sqrt(va / na + vb / nb)
-    t  = (ma - mb) / se
-    df_num = (va / na + vb / nb) ** 2
-    df_den = (va / na) ** 2 / (na - 1) + (vb / nb) ** 2 / (nb - 1)
-    df = df_num / df_den
-    p  = _betai(df / 2.0, 0.5, df / (df + t * t))
-    return t, p
+    t, p = ttest_ind(a, b, equal_var=False)
+    return float(t), float(p)
 
 # ---------------------------------------------------------------------------
 # Paths

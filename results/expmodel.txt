@@ -1,0 +1,22 @@
+Model
+a+1	105000	105500	on,1.5v,lowfan
+a-1	105500	110000	off,1.5v,lowfan
+a+2	110000	110500	on,1.5v,lowfan
+a-2	110500	111000	off,1.5v,lowfan
+b+1	111000	111500	on,1.5v,medfan
+b-1	111500	112000	off,1.5v,medfan
+b+2	112000	112500	on,1.5v,medfan
+b-2	112700	113200	off,1.5v,medfan
+c+1	113500	114000	on,nopump,medfan
+c-1	114000	114500	off,nopump,medfan
+c+2	114500	115000	on,nopump,medfan
+c-2	115000	115500	off,nopump,medfan
+d+1	120000	120500	on,nopump,lowfan
+d-1	120500	121000	off,nopump,lowfan
+d+2	121000	121500	on,nopump,lowfan
+d-2	121500	122000	off,nopump,lowfan
+Tests
+a+1,a+2	a-1,a-2
+b+1,b+2	b-1,b-2
+c+1,c+2	c-1,c-2
+d+1,d+2	d-1,d-2
