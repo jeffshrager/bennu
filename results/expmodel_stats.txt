@@ -19,7 +19,7 @@
  d+2    121000    121500  on,nopump,lowfan      617     1.9000     2.3700     2.1301     0.0835  [12:09:59 - 12:14:59]
  d-2    121500    122000  off,nopump,lowfan     617     1.8100     2.4400     2.1293     0.0875  [12:14:59 - 12:20:00]
 
-=== T-tests (Welch) ===
+=== T-tests ===
 
   a+1+a+2  vs  a-1+a-2  (on,1.5v,lowfan  vs  off,1.5v,lowfan)
     left : n=1233  mean=2.1083  sd=0.0876
@@ -29,7 +29,7 @@
   b+1+b+2  vs  b-1+b-2  (on,1.5v,medfan  vs  off,1.5v,medfan)
     left : n=1233  mean=2.1192  sd=0.0864
     right: n=1234  mean=2.1206  sd=0.0839
-    t=-0.4040  p=0.686224
+    t=-0.4040  p=0.686224  ns
 
   c+1+c+2  vs  c-1+c-2  (on,nopump,medfan  vs  off,nopump,medfan)
     left : n=1234  mean=2.1342  sd=0.0843
@@ -39,5 +39,12 @@
   d+1+d+2  vs  d-1+d-2  (on,nopump,lowfan  vs  off,nopump,lowfan)
     left : n=1234  mean=2.1343  sd=0.0832
     right: n=1233  mean=2.1321  sd=0.0839
-    t=0.6544  p=0.512904
+    t=0.6544  p=0.512904  ns
+
+=== Summary ===
+
+  *     a+1+a+2 vs a-1+a-2  (mean 2.1083 vs 2.1159)  (on,1.5v,lowfan  vs  off,1.5v,lowfan)
+  ns    b+1+b+2 vs b-1+b-2  (mean 2.1192 vs 2.1206)  (on,1.5v,medfan  vs  off,1.5v,medfan)
+  **    c+1+c+2 vs c-1+c-2  (mean 2.1342 vs 2.1440)  (on,nopump,medfan  vs  off,nopump,medfan)
+  ns    d+1+d+2 vs d-1+d-2  (mean 2.1343 vs 2.1321)  (on,nopump,lowfan  vs  off,nopump,lowfan)
 

@@ -167,9 +167,18 @@ for label, s in segments.items():
          f"{n:>5}  {mn:>9.4f}  {mx:>9.4f}  {mean:>9.4f}  {sd:>9.4f}  {actual}")
 
 # -- T-tests --
+def cond_desc(labels):
+    unique = list(dict.fromkeys('/'.join(segments[l]['conditions']) for l in labels))
+    return ' & '.join(unique)
+
+def stars(p):
+    return '***' if p < 0.001 else '**' if p < 0.01 else '*' if p < 0.05 else 'ns'
+
+test_results = []
+
 if tests:
     emit()
-    emit('=== T-tests (Welch) ===')
+    emit('=== T-tests ===')
     emit()
     for left_labels, right_labels in tests:
         left_vals  = [v for lbl in left_labels  for v in segments[lbl]['vals']]
@@ -181,16 +190,22 @@ if tests:
         right_str = '+'.join(right_labels)
         ln, lmean, lsd = len(left_vals),  sum(left_vals)  / len(left_vals),  math.sqrt(sum((v - sum(left_vals)/len(left_vals))**2  for v in left_vals)  / len(left_vals))
         rn, rmean, rsd = len(right_vals), sum(right_vals) / len(right_vals), math.sqrt(sum((v - sum(right_vals)/len(right_vals))**2 for v in right_vals) / len(right_vals))
+        desc = f"{cond_desc(left_labels)}  vs  {cond_desc(right_labels)}"
 
-        def cond_desc(labels):
-            unique = list(dict.fromkeys('/'.join(segments[l]['conditions']) for l in labels))
-            return ' & '.join(unique)
-
-        emit(f"  {left_str}  vs  {right_str}  ({cond_desc(left_labels)}  vs  {cond_desc(right_labels)})")
+        emit(f"  {left_str}  vs  {right_str}  ({desc})")
         emit(f"    left : n={ln}  mean={lmean:.4f}  sd={lsd:.4f}")
         emit(f"    right: n={rn}  mean={rmean:.4f}  sd={rsd:.4f}")
-        emit(f"    t={t:.4f}  p={p:.6f}{'  ***' if p < 0.001 else '  **' if p < 0.01 else '  *' if p < 0.05 else ''}")
+        emit(f"    t={t:.4f}  p={p:.6f}  {stars(p)}")
         emit()
+
+        test_results.append((left_str, right_str, desc, lmean, rmean, p))
+
+    emit('=== Summary ===')
+    emit()
+    for left_str, right_str, desc, lmean, rmean, p in test_results:
+        emit(f"  {stars(p):<4}  {left_str} vs {right_str}  "
+             f"(mean {lmean:.4f} vs {rmean:.4f})  ({desc})")
+    emit()
 
 # ---------------------------------------------------------------------------
 # Write output file
