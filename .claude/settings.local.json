@@ -5,7 +5,8 @@
       "Bash(python3 *)",
       "Bash(pip3 install *)",
       "Bash(/usr/local/opt/python@3.12/bin/pip3 install *)",
-      "Bash(conda run *)"
+      "Bash(conda run *)",
+      "Bash(git *)"
     ]
   }
 }

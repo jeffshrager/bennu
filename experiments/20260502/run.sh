@@ -1,0 +1,37 @@
+#!/bin/bash
+BASE="/home/bennu/software/bennu"
+CONFIG="$BASE/lamp.config"
+ALLON="$BASE/lamp_all_on.config"
+ALLOFF="$BASE/lamp_all_off.config"
+BP="$BASE/lamp_bp.config"
+BS="$BASE/lamp_bs.config"
+SS="$BASE/lamp_ss.config"
+SP="$BASE/lamp_sp.config"
+SLEEPSECS=600 # 10 minutes
+LOGFILE="$BASE/lamp_controller.log"
+echo "**************** Experiment 20260417 started ****************" >> "$LOGFILE"
+echo "ALL OFF WAVE 1 and 20 seconds..."
+cp "$ALLOFF" "$CONFIG"
+sleep "20"
+echo "ALL ON WAVE 2 and 20 seconds..."
+cp "$ALLON" "$CONFIG"
+sleep "20"
+echo "ALL OFF WAVE 3 and 20 seconds..."
+cp "$ALLOFF" "$CONFIG"
+sleep "20"
+echo "ALL ON WAVE 4 and 20 seconds..."
+cp "$ALLON" "$CONFIG"
+sleep "20"
+echo "And away we go!"
+while true; do
+    echo "---------- Loop ---------- "
+    echo "ALL OFF...waiting $SLEEPSECS seconds..."
+    cp "$ALLOFF" "$CONFIG"
+    sleep "$SLEEPSECS"
+    echo "All ON...waiting $SLEEPSECS seconds..."
+    cp "$ALLON" "$CONFIG"
+    sleep "$SLEEPSECS"
+done
+# Never gets here in this particular experiment
+echo "**************** Experiment 20260417 ended ****************" >> "$LOGFILE"
+
