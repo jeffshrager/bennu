@@ -1,0 +1,22 @@
+ON  : n=2521  mean=2.0139  sd=0.0988
+OFF : n=2539  mean=2.0116  sd=0.1038
+
+Welch t-test: t=0.8348  df=5048.8  p=0.403862  ns
+
+--- Within-pair (drift-corrected) ---
+
+ON phase means:  mean=2.0134  sd=0.1001
+OFF phase means: mean=2.0121  sd=0.1046
+ON-minus-adjacent-OFF diffs: n=22  mean=-0.0049  sd=0.0180
+
+One-sample t-test (diff vs 0): t=-1.2706  df=21.0  p=0.217769  ns
+
+--- Linear Mixed Model (drift + phase random effect) ---
+
+Fixed effects:
+  term                  estimate   std.err         t           p  
+  (Intercept)            2.01249   0.02145   93.8321    0.000000  ***
+  conditionON            0.00136   0.03021    0.0452    0.964170  ns
+  time_hr               -0.00004   0.00018   -0.1985    0.842656  ns
+
+Random effects:  phase_id variance=0.010035  residual variance=0.000268

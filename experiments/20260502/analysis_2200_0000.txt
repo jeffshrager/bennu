@@ -1,0 +1,20 @@
+=== Overall Welch t-test ===
+ON  : n=693  mean=2.0871  sd=0.0583
+OFF : n=690  mean=2.0952  sd=0.0599
+
+t=-2.5682  df=1379.5  p=0.010327  *
+
+=== Within-pair (drift-corrected) ===
+ON phase means:  mean=2.0741  sd=0.0639
+OFF phase means: mean=2.0957  sd=0.0607
+ON-minus-adjacent-OFF: n=7  mean=-0.0127  sd=0.0281
+
+t=-1.1919  df=6.0  p=0.278297  ns
+
+=== Linear Mixed Model: methane ~ condition + time_hr + (1|phase_id) ===
+Fixed effects:
+  term                  estimate   std.err         t           p
+  (Intercept)            2.06253   0.02967   69.5265    0.000000  ***
+  condition_fON         -0.02131   0.03707   -0.5749    0.576196  ns
+  time_hr                0.03140   0.01122    2.7982    0.005355  **
+Random effects: phase variance=0.004433  residual=0.000455
