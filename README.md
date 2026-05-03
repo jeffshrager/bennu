@@ -1,5 +1,13 @@
-#Updated by Jeff on 20260413
+#Updated by Jeff on 20260503
 
+************************************************
+*** IMPORTANT NOTES:
+************************************************
+Chronjob reboot now at 6pm (Korean time!)
+MAKE SURE YOU COPY A NEW RUN.SH WITH IMPROVED LOGGING NOTES NEXT TIME YOU RUN!
+************************************************
+
+=====================================================================
 BEWARE THE CHRONJOB REBOOT! (See below)
 
 Quick hits:
@@ -13,6 +21,15 @@ cd software/bennu
 Quick reboot:
 
 sudo shutdown -r now
+
+=====================================================================
+If the ship isn't answering, try rebooting the relay by logging in as
+jshrager (no pwd needed) and doing
+
+sudo reboot
+
+You'll need the pwd to sudo...see your computer notes on your phone
+for this.
 
 =====================================================================
 How to connect to the remora (from ~howto -- check to updates there if
@@ -128,9 +145,11 @@ Yeah:
 
 cat /var/spool/cron/crontabs/root
 
-...
+This reboots every 2 hours:
 0 */2 * * * sudo /sbin/shutdown -r +10 "System rebooting soon!"
-...
+
+# Reboot at 6pm	(Korean time) -- shuts the lights down (and turns off the experiment!)
+0 18 * * * /sbin/shutdown -r now
 
 If you want to edit this (for example, comment it out to stop the
 system from rebooting every two hours!) you need to use:
