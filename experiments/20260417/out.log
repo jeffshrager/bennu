@@ -1,19 +1,21 @@
 nohup: ignoring input
-bash: warning: setlocale: LC_ALL: cannot change locale (en_US.UTF-8): No such file or directory
-ALL OFF WAVE 1 and 20 seconds...
-ALL ON WAVE 2 and 20 seconds...
-ALL OFF WAVE 3 and 20 seconds...
-ALL ON WAVE 4 and 20 seconds...
-And away we go!
----------- Loop ---------- 
-ALL OFF...waiting 600 seconds...
-All ON...waiting 600 seconds...
----------- Loop ---------- 
-ALL OFF...waiting 600 seconds...
-All ON...waiting 600 seconds...
----------- Loop ---------- 
-ALL OFF...waiting 600 seconds...
-All ON...waiting 600 seconds...
----------- Loop ---------- 
-ALL OFF...waiting 600 seconds...
-All ON...waiting 600 seconds...
+2026-04-17T16:42:25-0700 [INFO] === Lamp controller starting up ===
+2026-04-17T16:42:25-0700 [INFO] Methane sensor initialized.
+Traceback (most recent call last):
+  File "/home/bennu/software/bennu/run.py", line 316, in <module>
+    main()
+    ~~~~^^
+  File "/home/bennu/software/bennu/run.py", line 266, in main
+    setup_gpio()
+    ~~~~~~~~~~^^
+  File "/home/bennu/software/bennu/run.py", line 87, in setup_gpio
+    GPIO.setup(pin, GPIO.OUT)
+    ~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/RPi/GPIO/__init__.py", line 704, in setup
+    initial = _check(lgpio.gpio_read(_chip, gpio))
+                     ~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/lgpio.py", line 903, in gpio_read
+    return _u2i(_lgpio._gpio_read(handle&0xffff, gpio))
+  File "/usr/lib/python3/dist-packages/lgpio.py", line 458, in _u2i
+    raise error(error_text(v))
+lgpio.error: 'GPIO not allocated'

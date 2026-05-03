@@ -10,7 +10,9 @@ ssh bennu@64.13.145.93
 ssh localhost -p 21965
 cd software/bennu
 
-Quick reboot: sudo shutdown -r now
+Quick reboot:
+
+sudo shutdown -r now
 
 =====================================================================
 How to connect to the remora (from ~howto -- check to updates there if
@@ -84,7 +86,7 @@ then copy of to your local machine FROM your local machine:
 
 Almost unbelivably, this works now too:
 
-   scp "rome:/home/bennu/software/bennu/*.log" .
+   scp "rome:/home/bennu/software/bennu/*.log*" .
 
 =====================================================================
 
