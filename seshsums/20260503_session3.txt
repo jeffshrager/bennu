@@ -1,0 +1,38 @@
+Session: 20260503 session 3
+Experiment: 20260502 (files moved from 20260417 dir)
+
+Work done:
+- Confirmed experiment data lives in experiments/20260502/ (lamp_controller.log, .log.1, .log.2)
+- Wrote extract_cycles.py (repo root) to parse all lamp_controller.log* files in chronological
+  order, assign ON/OFF condition from GPIO events, drop last incomplete phase, drop short test
+  pulses (--min-samples 50, default), drop methane=NA misreads, output cycles.tsv.
+  Stats: 323 misreads dropped, 22 complete ON/OFF cycles, 2521 ON samples, 2539 OFF samples.
+- Wrote analyze_cycles.R (repo root): three analyses on cycles.tsv:
+  1. Overall Welch t-test (ON vs OFF pooled): p=0.40 ns
+  2. Within-pair drift-corrected t-test (each ON vs adjacent OFF means): mean diff=-0.0049 ppm
+     (-5 ppb), p=0.22 ns
+  3. Linear mixed model: methane ~ condition + time_hr + (1|phase_id): conditionON ns
+- Wrote plot_cycles.R (repo root): methane trace over time with ON/OFF shading and smoothed
+  windspeed overlay (scaled to bottom 25% of y-axis).
+- Wrote run_analysis.R (repo root): unified wrapper combining all three analyses + plot,
+  accepts --start HH:MM and --end HH:MM args, handles midnight crossover, labels output
+  files by time window (e.g. analysis_2200_0000.txt, methane_plot_2200_0000.png).
+- Ran 22:00-00:00 window: raw t-test p=0.010 * (ON mean 2.087 vs OFF 2.095, delta=-8 ppb
+  in correct direction); within-pair ns (only 7 pairs, spike around 22:20-22:45 from
+  passing ship inflating variance); LMM conditionON ns but time_hr significant (real drift).
+
+Key findings:
+- 5-8 ppb reduction in methane during lamp-ON periods — small but in the right direction.
+  Given 96 lamps on an actual ship at sea vs. 4 lamps in a lab, any observable delta is
+  scientifically meaningful.
+- Main noise source: other ships passing, creating large methane plumes that swamp the signal.
+- Windspeed sensor is confounded: uses temperature differential, so lamp heat corrupts
+  readings during ON phases. Cannot use as contamination filter.
+- Upward methane drift across the night (~1.84 to 2.10 ppm) is real; within-pair and LMM
+  corrections are the right approach.
+
+Next steps discussed:
+- Methane rate-of-change filter to flag and exclude ship-plume contamination windows.
+- More cycles / longer experiments to build statistical power.
+
+All analysis code runs with: conda run -n test (has scipy, lmerTest installed).
