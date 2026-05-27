@@ -7,7 +7,8 @@
       "Bash(/usr/local/opt/python@3.12/bin/pip3 install *)",
       "Bash(conda run *)",
       "Bash(git *)",
-      "Bash(Rscript *)"
+      "Bash(Rscript *)",
+      "Bash(chmod +x *)"
     ]
   }
 }
