@@ -20,7 +20,11 @@ cd software/bennu
 
 Quick reboot:
 
-sudo shutdown -r now
+login as me:
+
+ssh jshrager@64.13.145.93
+sudo reboot now
+(you'll need your personal account's password (reminder: math gaming guy -- see your password table)
 
 =====================================================================
 If the ship isn't answering, try rebooting the relay by logging in as
@@ -101,7 +105,7 @@ then copy of to your local machine FROM your local machine:
 
    scp bennu@64.13.145.93:myfile .
 
-Almost unbelivably, this works now too:
+Almost unbelivably, this works now too (do this into the experiment/ folder):
 
    scp "rome:/home/bennu/software/bennu/*.log*" .
 
