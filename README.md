@@ -467,19 +467,17 @@ it's over complex. (Note that we don't use a chip ID, and I don't know
 if you can even give one. Anyway, once we know that the quads actually
 work someone can fix this code.
 
-gpio-pulse.sh is a one-shot timed pulse: it drives a pin high (or low)
-for a fixed number of milliseconds and then releases it. No background
-process — it uses gpioset --mode=time which blocks for exactly the
-requested duration and releases the line on exit. Usage:
+gpio-pulse.sh is a one-shot timed pulse: it drives a pin high for a
+fixed number of milliseconds and then drives it low. Uses pinctrl
+(gpioset does not work on this hardware). Sequence is:
+  pinctrl set <pin> dh  →  sleep  →  pinctrl set <pin> dl
 
-  gpio-pulse.sh <BCM_PIN> <DURATION_MS> [gpiochip] [value]
+Usage:
 
-  Examples:
-    ./gpio-pulse.sh 17 250             # GPIO17 high for 250 ms
-    ./gpio-pulse.sh 17 500 gpiochip0 0 # GPIO17 low for 500 ms
+  gpio-pulse.sh <BCM_PIN> <DURATION_MS>
 
-This is the simplest way to fire a single timed pulse from a shell
-script without worrying about cleanup.
+  Example:
+    ./gpio-pulse.sh 17 250   # GPIO17 high for 250 ms, then low
 
 
 

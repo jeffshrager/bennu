@@ -1,18 +1,16 @@
 #!/usr/bin/env bash
-# Usage: gpio-pulse <BCM_PIN> <DURATION_MS> [gpiochip] [value]
-# Drives a GPIO pin to VALUE for DURATION_MS milliseconds, then releases it.
-# Example: gpio-pulse 17 250          # pulse GPIO17 high for 250 ms
-#          gpio-pulse 17 500 gpiochip0 0  # pulse GPIO17 low for 500 ms
+# Usage: gpio-pulse <BCM_PIN> <DURATION_MS>
+# Drives a GPIO pin high for DURATION_MS milliseconds, then drives it low.
+# Uses pinctrl (not gpioset, which doesn't work on this hardware).
+# Example: gpio-pulse 17 250   # pulse GPIO17 high for 250 ms
 
 set -euo pipefail
 
-LINE="${1:-}"
+PIN="${1:-}"
 DURATION_MS="${2:-}"
-CHIP="${3:-gpiochip0}"
-VAL="${4:-1}"
 
-if [[ -z "$LINE" || -z "$DURATION_MS" ]]; then
-  echo "Usage: $(basename "$0") <BCM_PIN> <DURATION_MS> [gpiochip] [value]"
+if [[ -z "$PIN" || -z "$DURATION_MS" ]]; then
+  echo "Usage: $(basename "$0") <BCM_PIN> <DURATION_MS>"
   exit 1
 fi
 
@@ -23,4 +21,6 @@ fi
 
 DURATION_S="$(awk "BEGIN { printf \"%.6f\", $DURATION_MS / 1000 }")"
 
-gpioset --mode=time --sec=0 --usec="$(( DURATION_MS * 1000 ))" "$CHIP" "${LINE}=${VAL}"
+pinctrl set "$PIN" dh
+sleep "$DURATION_S"
+pinctrl set "$PIN" dl
