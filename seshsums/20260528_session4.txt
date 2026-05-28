@@ -1,0 +1,22 @@
+Session: 20260528 session 4
+
+Work done:
+- Created labexps/ directory for bench/lab GPIO experiments (separate from vessel experiments/).
+- Wrote labexps/exprun.py: multi-pin GPIO experiment runner.
+  - Takes args of the form [pin,on_ms,off_ms,initial_state] (one or more pins).
+  - Each pin runs in its own thread, cycling on/off independently at its own cadence.
+  - On Ctrl+C: signals all threads to stop, then explicitly forces all pins LOW (logged
+    as [forced]) before GPIO.cleanup() — ensures pins don't stay in an unknown state.
+  - Logs every state change with millisecond-precision timestamps to labexps/explog/,
+    one timestamped file per run (exp_YYYYMMDD_HHMMSS.log).
+  - Falls back to mock/simulation mode if RPi.GPIO is not available (dev machine).
+- Wrote labexps/run_example.sh: shell script that calls exprun.py with the design-spec
+  example (pin 5: 1000ms on / 4000ms off starting off; pin 6: 500ms on / 2000ms on starting on).
+  Uses cd "$(dirname "$0")" so logs always land in labexps/explog/ regardless of invocation dir.
+- Updated README.md: added "Lab experiments (labexps/)" section documenting exprun.py,
+  run_example.sh, and explog/.
+
+Key design notes:
+- Pins cycle: hold for (on_ms or off_ms depending on current state), flip, repeat.
+- stop_event.wait(timeout=...) used instead of time.sleep so Ctrl+C interrupts promptly.
+- All runs with: python3 (system or conda env test).

@@ -479,6 +479,29 @@ Usage:
   Example:
     ./gpio-pulse.sh 17 250   # GPIO17 high for 250 ms, then low
 
+=====================================================================
 
+#Lab experiments (labexps/)
 
- 
+labexps/ contains tools for running controlled GPIO experiments on the
+bench (not on the vessel).
+
+exprun.py - Multi-pin GPIO experiment runner with independent on/off cycles.
+  Each pin cycles independently at its own cadence, starting from a
+  given initial state. On Ctrl+C all pins are forced low before exit.
+  Logs every state change with millisecond timestamps to labexps/explog/.
+
+  Usage (run from labexps/):
+    python3 exprun.py [pin,on_ms,off_ms,initial_state] ...
+
+  Example:
+    python3 exprun.py '[5,1000,4000,off]' '[6,500,2000,on]'
+
+  Falls back to simulation/mock mode if RPi.GPIO is not available.
+
+run_example.sh - Runs the example above (pins 5 and 6 with the
+  timings from the initial design spec).
+
+explog/ - Timestamped log files (one per run) recording every pin
+  state change with real wall-clock time.
+
