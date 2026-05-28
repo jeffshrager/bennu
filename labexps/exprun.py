@@ -143,11 +143,17 @@ def main():
             while True:
                 time.sleep(0.1)
         except KeyboardInterrupt:
-            print("\nStopping…")
+            print("\nStopping — forcing all pins low…")
             stop_event.set()
 
         for t in threads:
             t.join(timeout=2)
+
+        for s in specs:
+            _pin_set(s['pin'], False)
+            ts = datetime.now().isoformat(timespec='milliseconds')
+            with log_lock:
+                log_file.write(f"{ts}  pin={s['pin']}  state=off  [forced]\n")
 
         log_file.write(f"# experiment_end: {datetime.now().isoformat()}\n")
 
