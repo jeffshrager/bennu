@@ -8,7 +8,8 @@
       "Bash(conda run *)",
       "Bash(git *)",
       "Bash(Rscript *)",
-      "Bash(chmod +x *)"
+      "Bash(chmod +x *)",
+      "Bash(grep -v \"\t0\t$\\\\|^TIME\")"
     ]
   }
 }
