@@ -505,3 +505,38 @@ run_example.sh - Runs the example above (pins 5 and 6 with the
 explog/ - Timestamped log files (one per run) recording every pin
   state change with real wall-clock time.
 
+seenums.py - Raspberry Pi camera OCR monitor with automatic GPIO-based
+  level control. Captures live video via Picamera2, crops to the
+  right-half / top-35% of the frame, and runs Tesseract OCR (digits
+  and period only) to read a numeric display. A heuristic filter
+  rejects ghost reads, decimal-stripping errors, and out-of-range
+  values, then returns the statistical mode over a 1-second sliding
+  window. When the stable value drops below a configurable threshold
+  the program pulses a GPIO pin high for a configurable duration,
+  creating a closed-loop automatic level monitor.
+
+  Requires a grounding value at startup to seed the filter.
+
+  Usage:
+    python3 seenums.py <initial_value> [options]
+
+  Key options:
+    --forced-reset-count / -frc <N|never>
+        Re-ground the filter after N consecutive rejected readings.
+        'never' disables forced resets entirely. (default: 30)
+    --max-delta / -md <float>
+        Maximum allowed change between readings before a read is
+        rejected as a spike. (default: 1.5)
+    --gpiopin <BCM pin>
+        GPIO pin to pulse when value drops below threshold.
+        Must be paired with -tlt.
+    --gpio-ms <milliseconds>
+        How long to hold the GPIO pin high per pulse. (default: 500)
+    --tickle-low-threshold / -tlt <float>
+        Pulse the GPIO pin whenever the stable value drops below
+        this level. Must be paired with --gpiopin.
+
+  Example — monitor a value grounded at 4.2, pulse GPIO17 for 250 ms
+  whenever it drops below 3.5, with no forced resets:
+    python3 seenums.py 4.2 -tlt 3.5 --gpiopin 17 --gpio-ms 250 -frc never
+
