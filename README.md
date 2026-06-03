@@ -540,3 +540,18 @@ seenums.py - Raspberry Pi camera OCR monitor with automatic GPIO-based
   whenever it drops below 3.5, with no forced resets:
     python3 seenums.py 4.2 -tlt 3.5 --gpiopin 17 --gpio-ms 250 -frc never
 
+  Standard neurofeedback run (30 ppm baseline, tickle below 29, GPIO pin 6):
+    python3 seenums.py 30 -tlt 29 --gpiopin 6 --gpio-ms 500 -frc never -md 1.5
+
+  Note on --max-delta / -md: controls how much the reading can change
+  between frames before it is rejected as noise. At a baseline of 30,
+  the default of 1.5 means a real drop to 29 (delta=1.0) passes through
+  fine, but a spike to 28.4 or 31.6 is dropped. Tighten this if you see
+  ghost jumps; loosen it if real changes are being filtered out.
+
+seenumslogs/ - Timestamped log files written by seenums.py, one per run
+  (seenums_YYYYMMDD_HHMMSS.log). Each log contains a header with all run
+  parameters, then one line per camera frame (READ), GPIO pin transitions
+  (GPIO HIGH/LOW with duration), forced re-grounding events (RESET), and a
+  run-end footer. All lines are prefixed with ISO millisecond timestamps.
+

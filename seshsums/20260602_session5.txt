@@ -1,0 +1,50 @@
+Session: 20260602 session 5
+
+Work done:
+- Created labexps/seenums.py: Raspberry Pi camera OCR monitor with automatic
+  GPIO-based closed-loop level control.
+  - Captures live video via Picamera2, crops to right-half / top-35% of frame,
+    runs Tesseract OCR (digits and period only) to read a numeric display.
+  - HeuristicFilter class cleans up noisy OCR output via three layers:
+    1. Smart decimal recovery (rescales values >50 by /10 or /100 if close to
+       last stable value — handles Tesseract dropping decimal points).
+    2. Hard range gate: rejects anything outside [0.00, 50.00].
+    3. Rate-of-change + whole-integer guard: rejects jumps > max_delta (default
+       1.5); whole integers held to tighter ±0.3 tolerance.
+  - Forced-reset mechanism: after N consecutive rejected readings the filter
+    re-grounds to the new value, preventing it from getting permanently stuck.
+  - get_stable_value() returns the statistical mode over a 1-second sliding window.
+  - GPIO tickle: when stable value drops below --tickle-low-threshold, pulses a
+    BCM GPIO pin HIGH for --gpio-ms milliseconds in a daemon thread. A pulse_lock
+    flag prevents overlapping pulses.
+  - Displays live telemetry table and draws bounding box + overlay on video feed.
+
+- All filter/GPIO parameters exposed as argparse args:
+    initial_value (positional)   grounding seed (0.00–50.00)
+    --forced-reset-count / -frc  anomaly count before re-ground, or 'never'
+    --max-delta / -md            max allowed reading-to-reading change (default 1.5)
+    --gpiopin                    BCM pin to pulse (must pair with -tlt)
+    --gpio-ms                    pulse duration in milliseconds (default 500)
+    --tickle-low-threshold / -tlt  threshold below which GPIO is pulsed
+
+- Created labexps/seenumslogs/: auto-created by os.makedirs at runtime.
+  One timestamped log file per run (seenums_YYYYMMDD_HHMMSS.log) containing:
+    - Header with all run parameters
+    - READ lines: per-frame raw OCR, stable value, anomaly count, TICKLE flag
+    - GPIO lines: HIGH (with duration) and LOW transitions from inside pulse thread
+    - RESET lines: fired via on_reset callback in HeuristicFilter at re-ground moment
+    - Footer: run-end timestamp written in finally block
+  Logging is thread-safe via log_lock.
+
+- Updated README.md: added seenums.py and seenumslogs/ entries under
+  "Lab experiments (labexps/)" section, including a standard neurofeedback
+  run example (30 ppm baseline, tlt=29, GPIO pin 6, 500ms pulse, -frc never,
+  -md 1.5) and a note explaining how to tune --max-delta for the tickle gap.
+
+Key design notes:
+- HeuristicFilter takes an on_reset callback so forced-reset events are logged
+  without coupling the filter class to file I/O.
+- GPIO pulse runs in a daemon thread; pulse_active flag (guarded by pulse_lock)
+  prevents stacking pulses while value stays below threshold.
+- Log file is held open for the entire run (single with-block wrapping main loop)
+  so flush() after each write is sufficient — no repeated open/close overhead.
