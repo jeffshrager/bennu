@@ -535,6 +535,12 @@ seenums.py - Raspberry Pi camera OCR monitor with automatic GPIO-based
     --tickle-low-threshold / -tlt <float>
         Pulse the GPIO pin whenever the stable value drops below
         this level. Must be paired with --gpiopin.
+    --tickle-delay-ms (-tdms) default: 5000 -- min msecs before 
+        another tickle is permitted (so you don't end up dooing too many tickles
+	before the measurement catches up!)
+
+python3 seenums.py 4.2 -tlt 3.5 --gpiopin 6 --gpio-ms 250 -frc never -md 2.0 -tdms 5000
+
 
   Example — monitor a value grounded at 4.2, pulse GPIO17 for 250 ms
   whenever it drops below 3.5, with no forced resets:

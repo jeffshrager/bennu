@@ -1,0 +1,29 @@
+# experiment_start: 2026-05-29T11:06:30.459886
+# pins: 5 on=180000ms off=180000ms init=off
+2026-05-29T11:06:30.462  pin=5  state=off
+2026-05-29T11:09:30.462  pin=5  state=on
+2026-05-29T11:12:30.462  pin=5  state=off
+2026-05-29T11:15:30.462  pin=5  state=on
+2026-05-29T11:18:30.463  pin=5  state=off
+2026-05-29T11:21:30.463  pin=5  state=on
+2026-05-29T11:24:30.463  pin=5  state=off
+2026-05-29T11:27:30.463  pin=5  state=on
+2026-05-29T11:30:30.463  pin=5  state=off
+2026-05-29T11:33:30.464  pin=5  state=on
+2026-05-29T11:36:30.464  pin=5  state=off
+2026-05-29T11:39:30.464  pin=5  state=on
+2026-05-29T11:42:30.464  pin=5  state=off
+2026-05-29T11:45:30.465  pin=5  state=on
+2026-05-29T11:48:30.465  pin=5  state=off
+2026-05-29T11:51:30.465  pin=5  state=on
+2026-05-29T11:54:30.465  pin=5  state=off
+2026-05-29T11:57:30.466  pin=5  state=on
+2026-05-29T12:00:30.466  pin=5  state=off
+2026-05-29T12:03:30.466  pin=5  state=on
+2026-05-29T12:06:30.466  pin=5  state=off
+2026-05-29T12:09:30.466  pin=5  state=on
+2026-05-29T12:12:30.467  pin=5  state=off
+2026-05-29T12:15:30.467  pin=5  state=on
+2026-05-29T12:18:30.467  pin=5  state=off
+2026-05-29T12:18:56.059  pin=5  state=off  [forced]
+# experiment_end: 2026-05-29T12:18:56.059207

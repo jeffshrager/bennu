@@ -1,0 +1,8 @@
+# experiment_start: 2026-05-28T11:14:07.395586
+# pins: 6 on=1000ms off=60000ms init=on
+2026-05-28T11:14:07.395  pin=6  state=on
+2026-05-28T11:14:08.396  pin=6  state=off
+2026-05-28T11:15:08.396  pin=6  state=on
+2026-05-28T11:15:09.396  pin=6  state=off
+2026-05-28T11:15:44.629  pin=6  state=off  [forced]
+# experiment_end: 2026-05-28T11:15:44.629086

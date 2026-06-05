@@ -170,7 +170,7 @@ def main():
 
         # Initialize Camera
         picam2 = Picamera2()
-        picam2.preview_configuration.main.size = (640, 480)
+        picam2.preview_configuration.main.size = (160, 120)
         picam2.preview_configuration.main.format = "RGB888"
         picam2.configure("preview")
         picam2.start()
@@ -206,8 +206,8 @@ def main():
                 frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
                 height, width, _ = frame.shape
 
-                ymin, xmin = 0, max(0, int(width * 0.5))
-                ymax, xmax = int(height * 0.35), width
+                ymin, xmin = 0, max(0, int(width * 0.70))
+                ymax, xmax = int(height * 0.20), width
 
                 cropped_zone = frame[ymin:ymax, xmin:xmax]
                 gray = cv2.cvtColor(cropped_zone, cv2.COLOR_BGR2GRAY)
