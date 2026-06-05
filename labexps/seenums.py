@@ -104,6 +104,8 @@ def main():
                         help="Pulse GPIO pin whenever stable value drops below this level")
     parser.add_argument("--max-delta", "-md", type=float, default=1.5,
                         help="Max allowed change between readings before rejection (default: 1.5)")
+    parser.add_argument("--tickle-delay-ms", "-tdms", type=int, default=5000,
+                        help="Minimum milliseconds between tickle pulses (default: 5000)")
     args = parser.parse_args()
 
     # Validate initial value
@@ -154,7 +156,8 @@ def main():
                        f"  forced_reset_count={frc_display}\n")
         if gpio_active:
             log_file.write(f"# gpio: pin={args.gpiopin}  ms={args.gpio_ms}"
-                           f"  tickle_low_threshold={args.tickle_low_threshold}\n")
+                           f"  tickle_low_threshold={args.tickle_low_threshold}"
+                           f"  tickle_delay_ms={args.tickle_delay_ms}\n")
         log_file.write("#\n")
         log_file.write("# timestamp                     event\n")
         log_file.write("#" + "-" * 70 + "\n")
@@ -165,6 +168,7 @@ def main():
         print(f"Forced reset:    {'disabled' if anomaly_threshold is None else f'after {anomaly_threshold} anomalies'}")
         if gpio_active:
             print(f"GPIO tickle:     pin {args.gpiopin}, {args.gpio_ms} ms pulse when value < {args.tickle_low_threshold:.2f}")
+            print(f"Tickle delay:    {args.tickle_delay_ms} ms minimum between pulses")
         print(f"Log:             {log_path}")
         print()
 
@@ -187,9 +191,10 @@ def main():
             on_reset=lambda v: log(f"RESET  new_ground={v:.2f}"),
         )
 
-        # GPIO pulse state — prevents overlapping pulses
+        # GPIO pulse state — prevents overlapping pulses and enforces tickle-delay-ms
         pulse_lock = threading.Lock()
         pulse_active = [False]
+        last_pulse_end_time = [0.0]
 
         def do_pulse():
             GPIO.output(args.gpiopin, GPIO.HIGH)
@@ -198,6 +203,7 @@ def main():
             GPIO.output(args.gpiopin, GPIO.LOW)
             log(f"GPIO   pin={args.gpiopin}  state=LOW")
             with pulse_lock:
+                last_pulse_end_time[0] = time.time()
                 pulse_active[0] = False
 
         try:
@@ -224,7 +230,8 @@ def main():
 
                 # Tickle: pulse GPIO if stable value is below threshold and no pulse is running
                 tickled = False
-                if gpio_active and stable_val is not None and stable_val < args.tickle_low_threshold:
+                delay_elapsed = (time.time() - last_pulse_end_time[0]) >= (args.tickle_delay_ms / 1000.0)
+                if gpio_active and stable_val is not None and stable_val < args.tickle_low_threshold and delay_elapsed:
                     with pulse_lock:
                         if not pulse_active[0]:
                             pulse_active[0] = True

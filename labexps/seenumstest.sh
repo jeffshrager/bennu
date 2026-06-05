@@ -1,2 +1,2 @@
-python3 seenums.py 4.2 -tlt 3.5 --gpiopin 6 --gpio-ms 250 -frc never -md 2.0 -tickle-delay-ms 5000
+python3 seenums.py 10.0 -tlt 9.0 --gpiopin 6 --gpio-ms 250 -frc never -md 2.0 -tdms 5000
 

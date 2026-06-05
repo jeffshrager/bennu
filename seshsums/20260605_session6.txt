@@ -1,0 +1,21 @@
+Session: 20260605 session 6
+
+Work done:
+- Fixed labexps/seenums.py to implement the --tickle-delay-ms / -tdms argument
+  described in README.md but missing from the code.
+
+  Changes:
+  - Added --tickle-delay-ms / -tdms argparse argument (type=int, default=5000).
+  - Added last_pulse_end_time = [0.0] list alongside pulse_active to track when
+    the most recent pulse ended (written inside pulse_lock in do_pulse()).
+  - Gated the tickle trigger on a new delay_elapsed check:
+      (time.time() - last_pulse_end_time[0]) >= (args.tickle_delay_ms / 1000.0)
+    so a new pulse cannot fire until at least tdms milliseconds after the last
+    pulse ended. This prevents stacking tickles before the measurement catches up.
+  - Added tickle_delay_ms to the per-run log file header (gpio line).
+  - Added "Tickle delay: N ms minimum between pulses" to the startup stdout summary.
+
+Key design note:
+- delay_elapsed is computed outside the pulse_lock on each frame; the lock is
+  only acquired when actually launching a new pulse. This matches the existing
+  pattern and avoids holding the lock across the threshold check.
