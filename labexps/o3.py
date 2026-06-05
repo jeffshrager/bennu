@@ -18,7 +18,7 @@ except ImportError:
 # Tesseract config (digits and period only)
 custom_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789.'
 
-LOG_DIR = os.path.join(os.path.dirname(__file__), 'seenumslogs')
+LOG_DIR = os.path.join(os.path.dirname(__file__), 'o3logs')
 
 
 class HeuristicFilter:
@@ -139,7 +139,7 @@ def main():
     # Open log file
     os.makedirs(LOG_DIR, exist_ok=True)
     ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-    log_path = os.path.join(LOG_DIR, f'seenums_{ts}.log')
+    log_path = os.path.join(LOG_DIR, f'o3_{ts}.log')
     log_lock = threading.Lock()
 
     def log(msg):
@@ -151,7 +151,7 @@ def main():
     with open(log_path, 'w') as log_file:
         # Write run header
         frc_display = 'never' if anomaly_threshold is None else str(anomaly_threshold)
-        log_file.write(f"# seenums run started: {datetime.now().isoformat()}\n")
+        log_file.write(f"# o3 run started: {datetime.now().isoformat()}\n")
         log_file.write(f"# initial_value={args.initial_value}  max_delta={args.max_delta}"
                        f"  forced_reset_count={frc_display}\n")
         if gpio_active:

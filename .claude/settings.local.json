@@ -10,7 +10,8 @@
       "Bash(Rscript *)",
       "Bash(chmod +x *)",
       "Bash(grep -v \"\t0\t$\\\\|^TIME\")",
-      "Bash(grep -v \"\t0\t$\" \"/Users/jeffshrager/Desktop/bluedot/Data/20260528_FlowAmbientwithO3/TG10-01753-2026-05-28T112500_reduced_annotated.tsv\")"
+      "Bash(grep -v \"\t0\t$\" \"/Users/jeffshrager/Desktop/bluedot/Data/20260528_FlowAmbientwithO3/TG10-01753-2026-05-28T112500_reduced_annotated.tsv\")",
+      "Bash(CLAUDE_CODE_TMPDIR=/tmp grep *)"
     ]
   }
 }

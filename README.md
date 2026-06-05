@@ -505,7 +505,7 @@ run_example.sh - Runs the example above (pins 5 and 6 with the
 explog/ - Timestamped log files (one per run) recording every pin
   state change with real wall-clock time.
 
-seenums.py - Raspberry Pi camera OCR monitor with automatic GPIO-based
+o3.py - Raspberry Pi camera OCR monitor with automatic GPIO-based
   level control. Captures live video via Picamera2, crops to the
   right-half / top-35% of the frame, and runs Tesseract OCR (digits
   and period only) to read a numeric display. A heuristic filter
@@ -518,7 +518,7 @@ seenums.py - Raspberry Pi camera OCR monitor with automatic GPIO-based
   Requires a grounding value at startup to seed the filter.
 
   Usage:
-    python3 seenums.py <initial_value> [options]
+    python3 o3.py <initial_value> [options]
 
   Key options:
     --forced-reset-count / -frc <N|never>
@@ -539,15 +539,15 @@ seenums.py - Raspberry Pi camera OCR monitor with automatic GPIO-based
         another tickle is permitted (so you don't end up dooing too many tickles
 	before the measurement catches up!)
 
-python3 seenums.py 4.2 -tlt 3.5 --gpiopin 6 --gpio-ms 250 -frc never -md 2.0 -tdms 5000
+python3 o3.py 4.2 -tlt 3.5 --gpiopin 6 --gpio-ms 250 -frc never -md 2.0 -tdms 5000
 
 
   Example — monitor a value grounded at 4.2, pulse GPIO17 for 250 ms
   whenever it drops below 3.5, with no forced resets:
-    python3 seenums.py 4.2 -tlt 3.5 --gpiopin 17 --gpio-ms 250 -frc never
+    python3 o3.py 4.2 -tlt 3.5 --gpiopin 17 --gpio-ms 250 -frc never
 
   Standard neurofeedback run (30 ppm baseline, tickle below 29, GPIO pin 6):
-    python3 seenums.py 30 -tlt 29 --gpiopin 6 --gpio-ms 500 -frc never -md 1.5
+    python3 o3.py 30 -tlt 29 --gpiopin 6 --gpio-ms 500 -frc never -md 1.5
 
   Note on --max-delta / -md: controls how much the reading can change
   between frames before it is rejected as noise. At a baseline of 30,
@@ -555,8 +555,8 @@ python3 seenums.py 4.2 -tlt 3.5 --gpiopin 6 --gpio-ms 250 -frc never -md 2.0 -td
   fine, but a spike to 28.4 or 31.6 is dropped. Tighten this if you see
   ghost jumps; loosen it if real changes are being filtered out.
 
-seenumslogs/ - Timestamped log files written by seenums.py, one per run
-  (seenums_YYYYMMDD_HHMMSS.log). Each log contains a header with all run
+o3logs/ - Timestamped log files written by o3.py, one per run
+  (o3_YYYYMMDD_HHMMSS.log). Each log contains a header with all run
   parameters, then one line per camera frame (READ), GPIO pin transitions
   (GPIO HIGH/LOW with duration), forced re-grounding events (RESET), and a
   run-end footer. All lines are prefixed with ISO millisecond timestamps.
