@@ -507,7 +507,7 @@ explog/ - Timestamped log files (one per run) recording every pin
 
 o3.py - Raspberry Pi camera OCR monitor with automatic GPIO-based
   level control. Captures live video via Picamera2, crops to the
-  right-half / top-35% of the frame, and runs Tesseract OCR (digits
+  right-half / top-part of the frame, and runs Tesseract OCR (digits
   and period only) to read a numeric display. A heuristic filter
   rejects ghost reads, decimal-stripping errors, and out-of-range
   values, then returns the statistical mode over a 1-second sliding
