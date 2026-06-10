@@ -561,3 +561,27 @@ o3logs/ - Timestamped log files written by o3.py, one per run
   (GPIO HIGH/LOW with duration), forced re-grounding events (RESET), and a
   run-end footer. All lines are prefixed with ISO millisecond timestamps.
 
+annotate_tsv.py - Merges a Presentation-style neurofeedback TSV with all
+  event logs found in explog/ and o3logs/, producing an annotated TSV on stdout.
+  All log files in both directories are loaded automatically — no log argument
+  needed. For each second in the TSV that matches a logged event, the script sets
+  column 4 to 30000 (stimulus-present code) and column 5 to the event text; rows
+  with no matching event get column 4 = 0. Event counts per file are reported on
+  stderr.
+
+  TSV input format (6+ tab-separated columns):
+    - Header row:  first field exactly TIME
+    - Data rows:   field 0 = HH:MM:SS, fields 1–3 = data channels (untouched),
+                   field 4 = stimulus code (overwritten), field 5 = note (overwritten)
+
+  Log input format (o3.py or exprun.py):
+    - Lines starting with # are skipped
+    - Data lines: YYYY-MM-DDTHH:MM:SS[.mmm]  <event text...>
+
+  Use --timedelta <seconds> to subtract a fixed offset from all log timestamps
+  before matching, aligning the o3/exprun wall clock with the TSV clock.
+
+  Usage:
+    python3 annotate_tsv.py recording.tsv > annotated.tsv
+    python3 annotate_tsv.py recording.tsv --timedelta 7200 > annotated.tsv
+
