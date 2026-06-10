@@ -1,0 +1,29 @@
+Session: 20260609 session 8
+
+Work done:
+- Documented labexps/annotate_tsv.py:
+  - Added module-level docstring covering inputs (TSV format, log format),
+    output, args, and usage examples.
+  - Added annotate_tsv.py entry to README.md under "Lab experiments (labexps/)"
+    section, after o3logs/.
+
+- Extended annotate_tsv.py to auto-discover log files:
+  - Removed log_file positional argument.
+  - Added collect_all_events() which globs all *.log files from explog/ and
+    o3logs/ relative to the current working directory (not the script dir).
+  - Events from all files are merged; same-second events from different logs
+    are combined (notes semicolon-joined).
+  - Reports loaded file names and event counts to stderr.
+
+- Simplified to explog/ only:
+  - Dropped o3logs/ from LOG_DIRS entirely at user request.
+  - Updated README and docstring to reflect this.
+
+- Clarified --timedelta sign convention:
+  - User added note to docstring: if the log clock is behind the TSV clock,
+    timedelta is negative (since the code subtracts delta from log timestamps).
+  - Confirmed correctness and mirrored the note into README.md.
+
+Files changed:
+  labexps/annotate_tsv.py
+  README.md

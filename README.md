@@ -579,7 +579,8 @@ annotate_tsv.py - Merges a Presentation-style neurofeedback TSV with all
     - Data lines: YYYY-MM-DDTHH:MM:SS[.mmm]  <event text...>
 
   Use --timedelta <seconds> to subtract a fixed offset from all log timestamps
-  before matching, aligning the o3/exprun wall clock with the TSV clock.
+  before matching, aligning the exprun wall clock with the TSV clock. Note that
+  if the log clock is behind the TSV clock, the timedelta will be negative.
 
   Usage:
     python3 annotate_tsv.py recording.tsv > annotated.tsv

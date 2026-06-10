@@ -25,6 +25,8 @@ ARGS:
   tsv_file     path to the TSV to annotate
   --timedelta  seconds to subtract from all log timestamps before matching
                (use to align the log wall clocks with the TSV clock)
+               NOTE THAT IF THE WALL CLOCK (LOG CLOCK) IS BEHIND THE TSV (LT)
+               CLOCK, THEN THE TIME DELTA WILL BE NEGATIVE!
 
 Usage:
   python3 annotate_tsv.py recording.tsv > annotated.tsv
@@ -36,8 +38,7 @@ import glob
 import os
 from datetime import datetime, timedelta
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-LOG_DIRS = ['explog', 'o3logs']
+LOG_DIRS = ['explog']
 
 
 def parse_log(log_file, delta_seconds):
@@ -65,13 +66,12 @@ def collect_all_events(delta_seconds):
     events = {}
     total = 0
     for log_dir in LOG_DIRS:
-        pattern = os.path.join(SCRIPT_DIR, log_dir, '*.log')
+        pattern = os.path.join(log_dir, '*.log')
         for path in sorted(glob.glob(pattern)):
             file_events = parse_log(path, delta_seconds)
             for key, notes in file_events.items():
                 events.setdefault(key, []).extend(notes)
-            print(f'# loaded {len(file_events)} events from {os.path.relpath(path, SCRIPT_DIR)}',
-                  file=sys.stderr)
+            print(f'# loaded {len(file_events)} events from {path}', file=sys.stderr)
             total += len(file_events)
     print(f'# total events across all logs: {total}', file=sys.stderr)
     return events
