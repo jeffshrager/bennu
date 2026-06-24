@@ -11,7 +11,16 @@
       "Bash(chmod +x *)",
       "Bash(grep -v \"\t0\t$\\\\|^TIME\")",
       "Bash(grep -v \"\t0\t$\" \"/Users/jeffshrager/Desktop/bluedot/Data/20260528_FlowAmbientwithO3/TG10-01753-2026-05-28T112500_reduced_annotated.tsv\")",
-      "Bash(CLAUDE_CODE_TMPDIR=/tmp grep *)"
+      "Bash(CLAUDE_CODE_TMPDIR=/tmp grep *)",
+      "Bash(xargs cat)",
+      "Bash(mkdir -p /tmp/rawtest2/o3logs)",
+      "Bash(cat)",
+      "Bash(printf 'TIME\\\\tA\\\\tB\\\\tC\\\\n00:00:01\\\\t1\\\\t1\\\\t1\\\\n00:00:02\\\\t1\\\\t1\\\\t1\\\\n00:00:03\\\\t1\\\\t1\\\\t1\\\\n00:00:04\\\\t1\\\\t1\\\\t1\\\\n00:00:05\\\\t1\\\\t1\\\\t1\\\\n')",
+      "Bash(python3 /Users/jeffshrager/Desktop/bluedot/remora_repo/labexps/annotate_tsv.py test.tsv)",
+      "Bash(rm -rf /tmp/rawtest2)",
+      "Bash(mkdir -p /tmp/rawtest3/o3logs)",
+      "Bash(printf 'TIME\\\\tA\\\\tB\\\\tC\\\\n00:00:01\\\\t1\\\\t1\\\\t1\\\\n00:00:02\\\\t1\\\\t1\\\\t1\\\\n00:00:03\\\\t1\\\\t1\\\\t1\\\\n00:00:04\\\\t1\\\\t1\\\\t1\\\\n00:00:05\\\\t1\\\\t1\\\\t1\\\\n00:00:06\\\\t1\\\\t1\\\\t1\\\\n00:00:07\\\\t1\\\\t1\\\\t1\\\\n00:00:08\\\\t1\\\\t1\\\\t1\\\\n')",
+      "Bash(rm -rf /tmp/rawtest3)"
     ]
   }
 }
