@@ -1,5 +1,0 @@
-# experiment_start: 2026-05-28T11:35:44.799487
-# pins: 5 on=12000ms off=120000ms init=off
-2026-05-28T11:35:44.799  pin=5  state=off
-2026-05-28T11:36:05.293  pin=5  state=off  [forced]
-# experiment_end: 2026-05-28T11:36:05.293313
