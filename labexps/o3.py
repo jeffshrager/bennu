@@ -23,6 +23,11 @@ LOG_DIR = os.path.join(os.path.dirname(__file__), 'o3logs')
 # Native size of the camera preview frame the OCR crop box is drawn within.
 FRAME_W, FRAME_H = 160, 120
 
+# The native frame is too small to see clearly on screen, so the display
+# window (both normal running and --calibrate) is shown upscaled by this
+# factor. OCR itself still runs on the native-resolution frame.
+DISPLAY_SCALE = 4
+
 # Original hardcoded crop box (top-right corner of the frame), preserved here
 # only to derive the default --vidpos extent (same size, but centered).
 _DEFAULT_CROP_W = int(FRAME_W * 0.30)
@@ -56,6 +61,66 @@ def default_vidpos():
     x1 = (FRAME_W - _DEFAULT_CROP_W) // 2
     y1 = (FRAME_H - _DEFAULT_CROP_H) // 2
     return [x1, y1, x1 + _DEFAULT_CROP_W, y1 + _DEFAULT_CROP_H]
+
+
+def run_calibration(picam2):
+    """Show an upscaled live feed and let the user drag a box with the mouse
+    to pick the OCR crop region. Returns [x1,y1,x2,y2] in native frame pixel
+    coordinates, or None if the user cancelled.
+    """
+    window = "Calibrate OCR box: drag to select, 'c'=confirm 'r'=reset 'q'=cancel"
+    cv2.namedWindow(window)
+    drag = {"active": False, "start": None, "box": None}
+
+    def on_mouse(event, x, y, flags, param):
+        if event == cv2.EVENT_LBUTTONDOWN:
+            drag["active"] = True
+            drag["start"] = (x, y)
+            drag["box"] = None
+        elif event == cv2.EVENT_MOUSEMOVE and drag["active"]:
+            x0, y0 = drag["start"]
+            drag["box"] = (min(x0, x), min(y0, y), max(x0, x), max(y0, y))
+        elif event == cv2.EVENT_LBUTTONUP and drag["active"]:
+            drag["active"] = False
+            x0, y0 = drag["start"]
+            drag["box"] = (min(x0, x), min(y0, y), max(x0, x), max(y0, y))
+
+    cv2.setMouseCallback(window, on_mouse)
+
+    result = None
+    try:
+        while True:
+            frame = picam2.capture_array()
+            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            display = cv2.resize(frame, (FRAME_W * DISPLAY_SCALE, FRAME_H * DISPLAY_SCALE),
+                                  interpolation=cv2.INTER_NEAREST)
+
+            if drag["box"]:
+                dx1, dy1, dx2, dy2 = drag["box"]
+                cv2.rectangle(display, (dx1, dy1), (dx2, dy2), (0, 0, 255), 2)
+
+            cv2.putText(display, "drag a box around the digits  |  c=confirm  r=reset  q=cancel",
+                        (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+            cv2.imshow(window, display)
+
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('r'):
+                drag["box"] = None
+            elif key == ord('c') and drag["box"]:
+                dx1, dy1, dx2, dy2 = drag["box"]
+                x1 = max(0, dx1 // DISPLAY_SCALE)
+                y1 = max(0, dy1 // DISPLAY_SCALE)
+                x2 = min(FRAME_W, -(-dx2 // DISPLAY_SCALE))  # ceil div
+                y2 = min(FRAME_H, -(-dy2 // DISPLAY_SCALE))
+                if x2 > x1 and y2 > y1:
+                    result = [x1, y1, x2, y2]
+                    break
+            elif key == ord('q'):
+                break
+    finally:
+        cv2.destroyWindow(window)
+
+    return result
 
 
 class HeuristicFilter:
@@ -148,9 +213,29 @@ def main():
                              "[top-left-x,top-left-y,bottom-right-x,bottom-right-y] e.g. --vidpos [100,20,150,40]. "
                              f"Coordinates are in {FRAME_W}x{FRAME_H} frame pixels. "
                              "Default: same size as the original crop region, but centered in the frame.")
+    parser.add_argument("--calibrate", action="store_true",
+                        help="Open an upscaled live feed and drag a box with the mouse to pick the OCR crop "
+                             "region interactively (overrides --vidpos). Prints the resulting --vidpos value "
+                             "to reuse next time without recalibrating.")
     args = parser.parse_args()
 
-    if args.vidpos is None:
+    if args.calibrate:
+        calib_cam = Picamera2()
+        calib_cam.preview_configuration.main.size = (FRAME_W, FRAME_H)
+        calib_cam.preview_configuration.main.format = "RGB888"
+        calib_cam.configure("preview")
+        calib_cam.start()
+        calibrated = run_calibration(calib_cam)
+        calib_cam.stop()
+        cv2.destroyAllWindows()
+        if calibrated is None:
+            print("Calibration cancelled.")
+            sys.exit(0)
+        args.vidpos = calibrated
+        print(f"Calibrated OCR crop box: {args.vidpos}")
+        print(f"  Reuse without recalibrating: --vidpos {args.vidpos[0]},{args.vidpos[1]},{args.vidpos[2]},{args.vidpos[3]}")
+        print()
+    elif args.vidpos is None:
         args.vidpos = default_vidpos()
 
     # Validate initial value
@@ -292,15 +377,20 @@ def main():
 
                 print(f"{raw_display:<15} | {stable_display:<15} | {number_filter.consecutive_anomalies:<10} | {tickle_display}")
 
-                cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), (0, 0, 255), 2)
+                display = cv2.resize(frame, (FRAME_W * DISPLAY_SCALE, FRAME_H * DISPLAY_SCALE),
+                                      interpolation=cv2.INTER_NEAREST)
+                dxmin, dymin = xmin * DISPLAY_SCALE, ymin * DISPLAY_SCALE
+                dxmax, dymax = xmax * DISPLAY_SCALE, ymax * DISPLAY_SCALE
+
+                cv2.rectangle(display, (dxmin, dymin), (dxmax, dymax), (0, 0, 255), 2)
                 if stable_val is not None:
-                    cv2.putText(frame, f"Stable: {stable_val:.2f}", (xmin, ymax + 20),
+                    cv2.putText(display, f"Stable: {stable_val:.2f}", (dxmin, dymax + 20),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
                 if tickled:
-                    cv2.putText(frame, "TICKLE!", (xmin, ymax + 45),
+                    cv2.putText(display, "TICKLE!", (dxmin, dymax + 45),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
-                cv2.imshow("Pi Camera Feed", frame)
+                cv2.imshow("Pi Camera Feed", display)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     break
 
