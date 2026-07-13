@@ -233,8 +233,7 @@ def main():
 
         vx1, vy1, vx2, vy2 = args.vidpos
         cv2.namedWindow("Pi Camera Feed", cv2.WINDOW_NORMAL)
-        cv2.resizeWindow("Pi Camera Feed", vx2 - vx1, vy2 - vy1)
-        cv2.moveWindow("Pi Camera Feed", vx1, vy1)
+        window_positioned = False
 
         print("Camera feed active. Running stream telemetry...")
         print(f"{'RAW (Fast)':<15} | {'STABLE (Slow)':<15} | {'ANOMALIES':<10} | TICKLE")
@@ -314,6 +313,12 @@ def main():
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
                 cv2.imshow("Pi Camera Feed", frame)
+                if not window_positioned:
+                    # Window must be realized (shown at least once) before the
+                    # backend will honor an explicit resize/move on most WMs.
+                    cv2.resizeWindow("Pi Camera Feed", vx2 - vx1, vy2 - vy1)
+                    cv2.moveWindow("Pi Camera Feed", vx1, vy1)
+                    window_positioned = True
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     break
 
