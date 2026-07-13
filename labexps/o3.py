@@ -20,12 +20,21 @@ custom_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789.'
 
 LOG_DIR = os.path.join(os.path.dirname(__file__), 'o3logs')
 
-# Native size of the camera preview frame shown in the video window.
+# Native size of the camera preview frame the OCR crop box is drawn within.
 FRAME_W, FRAME_H = 160, 120
+
+# Original hardcoded crop box (top-right corner of the frame), preserved here
+# only to derive the default --vidpos extent (same size, but centered).
+_DEFAULT_CROP_W = int(FRAME_W * 0.30)
+_DEFAULT_CROP_H = int(FRAME_H * 0.20)
 
 
 def parse_vidpos(s):
-    """Parse a --vidpos value of the form '[x1,y1,x2,y2]' (brackets optional)."""
+    """Parse a --vidpos value of the form '[x1,y1,x2,y2]' (brackets optional).
+
+    Defines the OCR crop box within the video frame: top-left-x, top-left-y,
+    bottom-right-x, bottom-right-y, in frame pixel coordinates.
+    """
     parts = [p.strip() for p in s.strip().strip('[]').split(',')]
     if len(parts) != 4:
         raise argparse.ArgumentTypeError(
@@ -36,32 +45,17 @@ def parse_vidpos(s):
         raise argparse.ArgumentTypeError("--vidpos values must be integers")
     if x2 <= x1 or y2 <= y1:
         raise argparse.ArgumentTypeError("--vidpos bottom-right corner must be greater than top-left corner")
+    if x1 < 0 or y1 < 0 or x2 > FRAME_W or y2 > FRAME_H:
+        raise argparse.ArgumentTypeError(
+            f"--vidpos must fit within the {FRAME_W}x{FRAME_H} frame")
     return [x1, y1, x2, y2]
 
 
-def get_screen_size():
-    """Best-effort screen resolution lookup, used to center the default window."""
-    try:
-        import tkinter
-        root = tkinter.Tk()
-        root.withdraw()
-        w, h = root.winfo_screenwidth(), root.winfo_screenheight()
-        root.destroy()
-        return w, h
-    except Exception:
-        return None
-
-
 def default_vidpos():
-    """Centered window at the camera's native frame extent."""
-    screen = get_screen_size()
-    if screen:
-        sw, sh = screen
-        x1 = max(0, (sw - FRAME_W) // 2)
-        y1 = max(0, (sh - FRAME_H) // 2)
-    else:
-        x1, y1 = 0, 0
-    return [x1, y1, x1 + FRAME_W, y1 + FRAME_H]
+    """Same-size crop box as the original hardcoded region, but centered in the frame."""
+    x1 = (FRAME_W - _DEFAULT_CROP_W) // 2
+    y1 = (FRAME_H - _DEFAULT_CROP_H) // 2
+    return [x1, y1, x1 + _DEFAULT_CROP_W, y1 + _DEFAULT_CROP_H]
 
 
 class HeuristicFilter:
@@ -150,9 +144,10 @@ def main():
     parser.add_argument("--tickle-delay-ms", "-tdms", type=int, default=5000,
                         help="Minimum milliseconds between tickle pulses (default: 5000)")
     parser.add_argument("--vidpos", type=parse_vidpos, default=None,
-                        help="Video window position/size as [top-left-x,top-left-y,bottom-right-x,bottom-right-y] "
-                             "e.g. --vidpos [100,200,150,250]. Default: centered on screen at "
-                             f"the camera's native {FRAME_W}x{FRAME_H} extent.")
+                        help="OCR crop box within the video frame, as "
+                             "[top-left-x,top-left-y,bottom-right-x,bottom-right-y] e.g. --vidpos [100,20,150,40]. "
+                             f"Coordinates are in {FRAME_W}x{FRAME_H} frame pixels. "
+                             "Default: same size as the original crop region, but centered in the frame.")
     args = parser.parse_args()
 
     if args.vidpos is None:
@@ -220,7 +215,7 @@ def main():
         if gpio_active:
             print(f"GPIO tickle:     pin {args.gpiopin}, {args.gpio_ms} ms pulse when value < {args.tickle_low_threshold:.2f}")
             print(f"Tickle delay:    {args.tickle_delay_ms} ms minimum between pulses")
-        print(f"Video window:    {args.vidpos}")
+        print(f"OCR crop box:    {args.vidpos}")
         print(f"Log:             {log_path}")
         print()
 
@@ -230,10 +225,6 @@ def main():
         picam2.preview_configuration.main.format = "RGB888"
         picam2.configure("preview")
         picam2.start()
-
-        vx1, vy1, vx2, vy2 = args.vidpos
-        cv2.namedWindow("Pi Camera Feed", cv2.WINDOW_NORMAL)
-        window_positioned = False
 
         print("Camera feed active. Running stream telemetry...")
         print(f"{'RAW (Fast)':<15} | {'STABLE (Slow)':<15} | {'ANOMALIES':<10} | TICKLE")
@@ -266,10 +257,7 @@ def main():
             while True:
                 frame = picam2.capture_array()
                 frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-                height, width, _ = frame.shape
-
-                ymin, xmin = 0, max(0, int(width * 0.70))
-                ymax, xmax = int(height * 0.20), width
+                xmin, ymin, xmax, ymax = args.vidpos
 
                 cropped_zone = frame[ymin:ymax, xmin:xmax]
                 gray = cv2.cvtColor(cropped_zone, cv2.COLOR_BGR2GRAY)
@@ -313,12 +301,6 @@ def main():
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
                 cv2.imshow("Pi Camera Feed", frame)
-                if not window_positioned:
-                    # Window must be realized (shown at least once) before the
-                    # backend will honor an explicit resize/move on most WMs.
-                    cv2.resizeWindow("Pi Camera Feed", vx2 - vx1, vy2 - vy1)
-                    cv2.moveWindow("Pi Camera Feed", vx1, vy1)
-                    window_positioned = True
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     break
 
