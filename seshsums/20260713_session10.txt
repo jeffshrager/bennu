@@ -1,0 +1,35 @@
+Session: 20260713 session 10
+
+Work done:
+- Added --vidpos control to labexps/o3.py for the OCR crop region (the red
+  box the script reads digits from), after an initial wrong turn:
+  - First attempt misread "video window" as the cv2 GUI display window and
+    implemented screen positioning (namedWindow/resizeWindow/moveWindow) —
+    corrected after user clarified they meant the OCR crop sub-region of
+    the frame, not the display window.
+  - --vidpos [x1,y1,x2,y2] now directly sets the crop box (top-left,
+    bottom-right) in native 160x120 frame pixel coordinates, replacing the
+    old hardcoded xmin=0.7*width..width, ymin=0..0.2*height region.
+  - parse_vidpos() accepts brackets or bare "x1,y1,x2,y2", validates the
+    box is non-degenerate and fits within the 160x120 frame.
+  - default_vidpos() preserves the original crop box's size (48x24 px) but
+    centers it in the frame instead of pinning it to the top-right corner.
+  - Logged/printed as "OCR crop box: [...]" at startup and in the log
+    header.
+
+- Fixed a real display bug found via user feedback ("can't tell if vidpos
+  is working, can't figure out where I want the box"): the native
+  160x120 preview window was too small to see clearly.
+  - Added DISPLAY_SCALE = 4: the shown window is now upscaled 4x
+    (640x480, cv2.INTER_NEAREST) with the crop rectangle and text drawn
+    at the scaled coordinates; OCR itself still runs on the native-res
+    frame, only the display changed.
+  - Added run_calibration() + --calibrate flag: opens the upscaled live
+    feed, lets the user drag a box with the mouse (LBUTTONDOWN/MOVE/UP),
+    'c' confirms, 'r' resets, 'q' cancels. On confirm it converts the
+    scaled drag coordinates back to native 160x120 space, uses that as
+    the session's vidpos, and prints the equivalent --vidpos value to
+    reuse on future runs without recalibrating.
+
+Files changed:
+  labexps/o3.py

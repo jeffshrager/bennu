@@ -57,10 +57,13 @@ def parse_vidpos(s):
 
 
 def default_vidpos():
+    return [50,70,110,95]
     """Same-size crop box as the original hardcoded region, but centered in the frame."""
+    """
     x1 = (FRAME_W - _DEFAULT_CROP_W) // 2
     y1 = (FRAME_H - _DEFAULT_CROP_H) // 2
     return [x1, y1, x1 + _DEFAULT_CROP_W, y1 + _DEFAULT_CROP_H]
+    """
 
 
 def run_calibration(picam2):
