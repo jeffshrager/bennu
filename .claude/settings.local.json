@@ -20,7 +20,15 @@
       "Bash(rm -rf /tmp/rawtest2)",
       "Bash(mkdir -p /tmp/rawtest3/o3logs)",
       "Bash(printf 'TIME\\\\tA\\\\tB\\\\tC\\\\n00:00:01\\\\t1\\\\t1\\\\t1\\\\n00:00:02\\\\t1\\\\t1\\\\t1\\\\n00:00:03\\\\t1\\\\t1\\\\t1\\\\n00:00:04\\\\t1\\\\t1\\\\t1\\\\n00:00:05\\\\t1\\\\t1\\\\t1\\\\n00:00:06\\\\t1\\\\t1\\\\t1\\\\n00:00:07\\\\t1\\\\t1\\\\t1\\\\n00:00:08\\\\t1\\\\t1\\\\t1\\\\n')",
-      "Bash(rm -rf /tmp/rawtest3)"
+      "Bash(rm -rf /tmp/rawtest3)",
+      "Read(//private/tmp/**)",
+      "Bash(mkdir -p ~/.local/bin)",
+      "Bash(cp /tmp/gh_2.96.0_macOS_amd64/bin/gh ~/.local/bin/gh)",
+      "Bash(~/.local/bin/gh --version)",
+      "Bash(~/.local/bin/gh auth *)",
+      "Bash(rm -f /tmp/gh_auth.log)",
+      "Bash(nohup ~/.local/bin/gh auth login --hostname github.com --git-protocol https --web)",
+      "Bash(echo \"started pid $!\")"
     ]
   }
 }
