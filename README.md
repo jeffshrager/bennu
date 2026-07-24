@@ -583,19 +583,26 @@ python3 o3.py 4.2 -tlt 3.5 --gpiopin 6 --gpio-ms 250 -frc never -md 2.0 -tdms 50
   o3.py now detects this: a run of at least -sac rejections that ends
   in -rcc readings agreeing with each other (within -md) is treated as
   "the display moved and our grounding is stale" rather than as noise,
-  and the filter re-grounds onto the median of that cluster. This takes
-  more evidence than the single-value -frc reset, so it is preferred
-  over it when both would fire. Scattered rejections that never agree
-  do not re-ground.
+  and the filter re-grounds onto the median of that cluster. Scattered
+  rejections that never agree do not re-ground.
+
+  This takes more evidence than the single-value -frc reset and is
+  checked first, but it cannot fire before -sac rejections have piled
+  up: a -frc smaller than -sac still wins the race and re-grounds onto
+  a single read. Keep -frc never (or set it above -sac) to let the
+  corroborated path do the work.
 
   If re-grounding reveals the level is below --target, recovery engages:
   the min tickle point (-tlt) is ignored and tickling continues until
   the level is back at --target, with pulses spaced -rtdms apart.
   Recovery ends on reaching the target, or is abandoned after -rmp
   pulses that produce no new high, so an unreadable display or a dead
-  generator can never leave the program tickling blindly. The TARGET
-  column shows which level is currently being driven to (-tlt normally,
-  --target while recovering) and MODE shows normal vs RECOVER.
+  generator cannot leave it climbing forever. Abandoning drops back to
+  ordinary tickling at -tlt against the re-grounded value; it does not
+  stop tickling, so a genuinely low level still gets pulsed, just
+  without the ignore-the-threshold climb. The TARGET column shows which
+  level is currently being driven to (-tlt normally, --target while
+  recovering) and MODE shows normal vs RECOVER.
 
   This also rescues a related stall: readings that land on a whole
   integer are held to a tighter 0.3 gap, so at a baseline of 30 a
