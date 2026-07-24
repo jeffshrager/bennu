@@ -1,3 +1,46 @@
+"""Read a numeric display with the Pi camera and hold its level with GPIO pulses.
+
+Each pass of the main loop does the same six things:
+
+    capture frame -> crop to the OCR box -> Tesseract -> filter the reading
+    -> decide whether to tickle -> report to stdout, the log and the preview
+
+The display is a numeric readout (ozone ppm in the lab rig). OCR of a small,
+low-contrast seven-segment display is noisy, so raw reads are never trusted
+directly. HeuristicFilter keeps a "grounding" value -- its best idea of the
+current true level -- and rejects reads that disagree with it too much, then
+reports the statistical mode over a one-second sliding window as the stable
+value. The loop acts only on that stable value.
+
+Control is one-directional: pulsing the GPIO pin ("tickling") drives the level
+up, and nothing drives it down but time. So the loop only ever decides whether
+to pulse, and it does so when the stable value falls below a threshold.
+
+There are two modes:
+
+    normal    Tickle whenever the stable value is below --tickle-low-threshold,
+              no more often than --tickle-delay-ms. This holds the level just
+              above the threshold.
+
+    RECOVER   Ignore the threshold and keep tickling until the level is back at
+              --target, spacing pulses --recovery-tickle-delay-ms apart.
+
+RECOVER exists because the grounding can go stale. If OCR fails for a long
+stretch, nothing updates the grounding while the real level falls. When OCR
+comes back, the correct low reads are now far from the stale grounding, so the
+filter rejects them as anomalies, keeps reporting the stale value, sees nothing
+below the threshold, and stops tickling while the level keeps falling -- a
+declining spiral with no way out. The filter detects this by noticing a long
+run of rejections that ends in several reads agreeing with each other, which
+means the display moved rather than that the reads are bad, and re-grounds onto
+that cluster. If the true level turns out to be below --target, RECOVER climbs
+back to it. A pulse budget that only refills on a new high stops a dead
+generator or an unreadable display from being tickled forever.
+
+Outputs: a per-frame table on stdout, a per-run log under o3logs/ (see the
+README for the line format), and an upscaled preview window showing the OCR box.
+"""
+
 import sys
 import os
 import cv2
@@ -9,11 +52,18 @@ import argparse
 from collections import Counter
 from datetime import datetime
 
+# GPIO is Pi-only. Import failure is not fatal: the program still runs as a
+# read-only monitor, and only the tickling options are refused.
 try:
     import RPi.GPIO as GPIO
     GPIO_AVAILABLE = True
 except ImportError:
     GPIO_AVAILABLE = False
+
+
+# ---------------------------------------------------------------------------
+# Capture and OCR geometry
+# ---------------------------------------------------------------------------
 
 # Tesseract config (digits and period only)
 custom_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789.'
@@ -57,14 +107,21 @@ def parse_vidpos(s):
 
 
 def default_vidpos():
-    return [50,70,110,95]
-    """Same-size crop box as the original hardcoded region, but centered in the frame."""
-    """
-    x1 = (FRAME_W - _DEFAULT_CROP_W) // 2
-    y1 = (FRAME_H - _DEFAULT_CROP_H) // 2
-    return [x1, y1, x1 + _DEFAULT_CROP_W, y1 + _DEFAULT_CROP_H]
-    """
+    """Crop box used when neither --vidpos nor --calibrate is given.
 
+    Hardcoded to the box that suits the current rig rather than computed. The
+    centered-box calculation it replaced is kept below, commented out, as the
+    right starting point if the camera is ever repositioned.
+    """
+    return [50, 70, 110, 95]
+    # x1 = (FRAME_W - _DEFAULT_CROP_W) // 2
+    # y1 = (FRAME_H - _DEFAULT_CROP_H) // 2
+    # return [x1, y1, x1 + _DEFAULT_CROP_W, y1 + _DEFAULT_CROP_H]
+
+
+# ---------------------------------------------------------------------------
+# Interactive crop-box calibration
+# ---------------------------------------------------------------------------
 
 def run_calibration(picam2):
     """Show an upscaled live feed and let the user drag a box with the mouse
@@ -126,7 +183,39 @@ def run_calibration(picam2):
     return result
 
 
+# ---------------------------------------------------------------------------
+# Reading filter
+# ---------------------------------------------------------------------------
+
 class HeuristicFilter:
+    """Turn a stream of noisy OCR reads into a trustworthy level.
+
+    The filter holds a *grounding* value (last_stable_value): its current best
+    idea of the true level. Every new read is judged against it by three rules,
+    applied in order by add_reading:
+
+        1. Decimal recovery -- a read above the 50.00 ceiling is usually a lost
+           decimal point, so try it divided by 10 and by 100 and keep whichever
+           lands near the grounding.
+        2. Range -- anything outside 0.00-50.00 is impossible; reject it.
+        3. Rate of change -- reject a read further than max_delta from the
+           grounding. Reads that land exactly on a whole number get a tighter
+           0.3 allowance, because a dropped decimal point ("30" for "3.0") is a
+           common OCR failure and looks plausible otherwise.
+
+    Accepted reads go into a time-boxed history; get_stable_value reports the
+    mode of the last window_duration seconds, so a single bad read that slips
+    through cannot move the reported value.
+
+    Rejecting is the safe default for noise, but it fails when the grounding
+    itself is wrong: correct reads then look anomalous and are rejected
+    indefinitely. Two escapes exist. check_for_forced_reset re-grounds after
+    anomaly_threshold consecutive rejections using the single triggering read.
+    check_for_confirmed_reground waits for stronger evidence -- a long
+    rejection run ending in several reads that agree with each other -- and is
+    tried first. Either way on_reset fires so the caller can react.
+    """
+
     def __init__(self, start_val=None, window_duration_sec=1.0, max_delta=1.5,
                  anomaly_threshold=30, on_reset=None,
                  stuck_anomaly_count=25, recovery_confirm_count=10):
@@ -153,6 +242,12 @@ class HeuristicFilter:
             self.history.append((time.time(), start_val))
 
     def add_reading(self, val):
+        """Judge one OCR read and either accept it into history or reject it.
+
+        Rejections are counted, and plausible ones are remembered as evidence
+        that the grounding may be stale. Nothing is returned; call
+        get_stable_value for the filtered level.
+        """
         # 1. Smart Decimal Recovery
         if val > 50.00 and self.last_stable_value is not None:
             if abs((val / 10.0) - self.last_stable_value) <= self.max_delta:
@@ -212,6 +307,13 @@ class HeuristicFilter:
         return True
 
     def check_for_forced_reset(self, current_rejected_val):
+        """Re-ground on the triggering read after too many rejections in a row.
+
+        The blunt escape hatch: it trusts a single read, so it can ground onto a
+        garbage value. --forced-reset-count never disables it, which is the
+        usual setting, leaving check_for_confirmed_reground to do this job on
+        better evidence.
+        """
         if self.anomaly_threshold is None:
             return
         if self.consecutive_anomalies >= self.anomaly_threshold:
@@ -220,6 +322,12 @@ class HeuristicFilter:
                 self._reground(current_rejected_val, 'forced')
 
     def _reground(self, new_val, reason):
+        """Move the grounding to new_val and discard everything based on the old one.
+
+        History and pending evidence both refer to the previous grounding, so
+        they are cleared rather than carried over. reason is 'forced' or
+        'confirmed' and is passed on to the on_reset callback.
+        """
         self.history.clear()
         self.last_stable_value = new_val
         self.history.append((time.time(), new_val))
@@ -229,6 +337,13 @@ class HeuristicFilter:
             self.on_reset(new_val, reason)
 
     def get_stable_value(self):
+        """Report the mode of the accepted reads inside the sliding window.
+
+        The mode, not the mean, so one outlier that passed the rules cannot drag
+        the answer. When the window is empty -- OCR failing, or every read being
+        rejected -- the last known value is returned unchanged, which is what
+        makes a stale grounding possible and why the re-ground checks exist.
+        """
         now = time.time()
         self.history = [(t, v) for t, v in self.history if now - t <= self.window_duration]
 
@@ -243,7 +358,18 @@ class HeuristicFilter:
         return most_common_val
 
 
+# ---------------------------------------------------------------------------
+# Command line, setup and the control loop
+# ---------------------------------------------------------------------------
+
 def main():
+    """Parse arguments, set up camera/GPIO/logging, then run the control loop.
+
+    Laid out in order: arguments, optional interactive calibration, validation,
+    log file, camera, recovery state and pulse machinery, then the loop itself.
+    Everything the loop needs lives in closures over this function's locals, so
+    the run's configuration is fixed by the time the loop starts.
+    """
     parser = argparse.ArgumentParser(description="OCR a numeric display via Pi camera and monitor its level.")
     parser.add_argument("initial_value", type=float,
                         help="Grounding value to seed the filter (0.00-50.00)")
@@ -465,7 +591,13 @@ def main():
                 pulse_active[0] = False
 
         try:
+            # One iteration per camera frame. In order: read the display, filter
+            # the reading, update recovery state, decide whether to tickle, then
+            # report the same facts to stdout, the log and the preview window.
+            # 'q' in the preview window quits; the finally block always releases
+            # the camera and the GPIO pin.
             while True:
+                # --- read the display ---
                 frame = picam2.capture_array()
                 frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
                 xmin, ymin, xmax, ymax = args.vidpos
@@ -483,6 +615,7 @@ def main():
 
                 stable_val = number_filter.get_stable_value()
 
+                # --- update recovery state ---
                 # Climbing is working: a new high means the pulses are landing, so
                 # refill the budget. The cap therefore measures pulses that
                 # achieved nothing, not total effort spent on a slow rise.
@@ -528,6 +661,7 @@ def main():
                                 recovery["pulses"] += 1
                             threading.Thread(target=do_pulse, daemon=True).start()
 
+                # --- report: stdout table, log line, preview window ---
                 raw_display = detected_text if detected_text else "None"
                 stable_display = f"{stable_val:.2f}" if stable_val is not None else "None"
                 tickle_display = "*** TICKLE ***" if tickled else ""
