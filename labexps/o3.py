@@ -314,9 +314,15 @@ def main():
         picam2.configure("preview")
         picam2.start()
 
+        # The tickle threshold is the level the closed loop holds, i.e. the
+        # target. Constant for the run, but shown per-row so the target is
+        # visible alongside every reading in the output and the log.
+        target_display = (f"{args.tickle_low_threshold:.2f}"
+                          if args.tickle_low_threshold is not None else "none")
+
         print("Camera feed active. Running stream telemetry...")
-        print(f"{'RAW (Fast)':<15} | {'STABLE (Slow)':<15} | {'ANOMALIES':<10} | TICKLE")
-        print("-" * 60)
+        print(f"{'RAW (Fast)':<15} | {'STABLE (Slow)':<15} | {'TARGET':<10} | {'ANOMALIES':<10} | TICKLE")
+        print("-" * 75)
 
         number_filter = HeuristicFilter(
             start_val=args.initial_value,
@@ -375,10 +381,11 @@ def main():
                 tickle_display = "*** TICKLE ***" if tickled else ""
 
                 log(f"READ   raw={raw_display:<10}  stable={stable_display:<8}"
+                    f"  target={target_display:<8}"
                     f"  anomalies={number_filter.consecutive_anomalies}"
                     + (f"  TICKLE" if tickled else ""))
 
-                print(f"{raw_display:<15} | {stable_display:<15} | {number_filter.consecutive_anomalies:<10} | {tickle_display}")
+                print(f"{raw_display:<15} | {stable_display:<15} | {target_display:<10} | {number_filter.consecutive_anomalies:<10} | {tickle_display}")
 
                 display = cv2.resize(frame, (FRAME_W * DISPLAY_SCALE, FRAME_H * DISPLAY_SCALE),
                                       interpolation=cv2.INTER_NEAREST)
