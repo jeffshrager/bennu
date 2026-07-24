@@ -538,6 +538,23 @@ o3.py - Raspberry Pi camera OCR monitor with automatic GPIO-based
     --tickle-delay-ms (-tdms) default: 5000 -- min msecs before 
         another tickle is permitted (so you don't end up dooing too many tickles
 	before the measurement catches up!)
+    --target / -t <float>
+        Normal operating level. Used only during recovery (see below):
+        tickling continues up to this level instead of stopping at
+        -tlt. (default: the initial grounding value)
+    --stuck-anomaly-count / -sac <N>
+        Consecutive rejected readings that mark OCR as having failed
+        for a long time, arming stuck-grounding detection. (default: 25)
+    --recovery-confirm-count / -rcc <N>
+        Consecutive rejected-but-agreeing readings required to accept a
+        new grounding once detection is armed. (default: 10)
+    --recovery-tickle-delay-ms / -rtdms <milliseconds>
+        Min msecs between pulses while recovering, kept longer than
+        normal so the measurement catches up. (default: 2x -tdms)
+    --recovery-max-pulses / -rmp <N>
+        Safety cap: pulses allowed during recovery without the level
+        reaching a new high. Any new high refills the budget, so this
+        only trips when tickling is achieving nothing. (default: 20)
 
 python3 o3.py 4.2 -tlt 3.5 --gpiopin 6 --gpio-ms 250 -frc never -md 2.0 -tdms 5000
 
@@ -555,11 +572,44 @@ python3 o3.py 4.2 -tlt 3.5 --gpiopin 6 --gpio-ms 250 -frc never -md 2.0 -tdms 50
   fine, but a spike to 28.4 or 31.6 is dropped. Tighten this if you see
   ghost jumps; loosen it if real changes are being filtered out.
 
+  Stuck grounding and recovery: if OCR fails for a long stretch, the
+  real level can drift far from the grounding value. When OCR comes
+  back, those correct readings are now further than -md from the stale
+  grounding, so they are rejected as anomalies -- the filter keeps
+  reporting the stale value, the loop sees nothing below -tlt, and it
+  stops tickling while the level keeps falling. With -frc never there
+  was nothing to break the cycle.
+
+  o3.py now detects this: a run of at least -sac rejections that ends
+  in -rcc readings agreeing with each other (within -md) is treated as
+  "the display moved and our grounding is stale" rather than as noise,
+  and the filter re-grounds onto the median of that cluster. This takes
+  more evidence than the single-value -frc reset, so it is preferred
+  over it when both would fire. Scattered rejections that never agree
+  do not re-ground.
+
+  If re-grounding reveals the level is below --target, recovery engages:
+  the min tickle point (-tlt) is ignored and tickling continues until
+  the level is back at --target, with pulses spaced -rtdms apart.
+  Recovery ends on reaching the target, or is abandoned after -rmp
+  pulses that produce no new high, so an unreadable display or a dead
+  generator can never leave the program tickling blindly. The TARGET
+  column shows which level is currently being driven to (-tlt normally,
+  --target while recovering) and MODE shows normal vs RECOVER.
+
+  This also rescues a related stall: readings that land on a whole
+  integer are held to a tighter 0.3 gap, so at a baseline of 30 a
+  correct "30" read can be rejected repeatedly. The corroborated
+  re-ground now clears that too.
+
 o3logs/ - Timestamped log files written by o3.py, one per run
   (o3_YYYYMMDD_HHMMSS.log). Each log contains a header with all run
-  parameters, then one line per camera frame (READ), GPIO pin transitions
-  (GPIO HIGH/LOW with duration), forced re-grounding events (RESET), and a
-  run-end footer. All lines are prefixed with ISO millisecond timestamps.
+  parameters, then one line per camera frame (READ, carrying raw, stable,
+  target, mode and anomaly count), GPIO pin transitions (GPIO HIGH/LOW with
+  duration), re-grounding events (RESET, with reason=forced or
+  reason=confirmed), recovery transitions (RECOVERY start/done/abandoned),
+  and a run-end footer. All lines are prefixed with ISO millisecond
+  timestamps.
 
 annotate_tsv.py - Merges a Presentation-style neurofeedback TSV with all
   event logs found in explog/ and o3logs/, producing an annotated TSV on stdout.
