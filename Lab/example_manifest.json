@@ -1,0 +1,33 @@
+{
+  "experiment": "20260801a_o3_30ppm_1min",
+  "date": "2026-08-01",
+  "operator": "jeff",
+  "notes": "Baseline replication at 30 ppm O3, symmetric 1-minute lamp cycling.",
+
+  "duration_min": 240,
+
+  "conditions": {
+    "methane_sensor": "licor",
+    "methane_ppm": 2.0,
+    "flow_lpm": 1.5,
+    "flow_control": "manual"
+  },
+
+  "lamp": {
+    "pin": 5,
+    "on_ms": 60000,
+    "off_ms": 60000,
+    "initial": "off"
+  },
+
+  "ozone": {
+    "setpoint": 30.0,
+    "tickle_low_threshold": 29.0,
+    "pin": 6,
+    "gpio_ms": 500,
+    "tickle_delay_ms": 5000,
+    "max_delta": 1.5,
+    "forced_reset_count": "never",
+    "vidpos": [50, 70, 110, 95]
+  }
+}

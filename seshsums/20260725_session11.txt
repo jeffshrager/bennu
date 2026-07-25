@@ -1,0 +1,76 @@
+Session: 20260725 session 11
+
+Work done:
+- Set up collaboration with GitHub user leonardoarmel:
+  - Installed GitHub CLI (gh) locally (Homebrew build failed on outdated
+    Xcode CLI tools, so fetched the precompiled release binary instead) and
+    authenticated via the device-code web flow.
+  - Verified leonardoarmel already has write-level collaborator access on
+    jeffshrager/bennu — no invite needed.
+  - Confirmed main has no branch protection rules, per the user's wish that
+    both collaborators be able to push directly to main.
+
+- Untracked local Claude Code settings (commit 9137417):
+  - .claude/settings.local.json and ubermodel/.claude/settings.local.json
+    were committed to the repo despite containing per-user permission
+    allowlists with machine-specific absolute paths (/Users/jeffshrager/...).
+    The user's global ~/.gitignore_global already excludes this pattern,
+    but that only stops new files, not already-tracked ones, and doesn't
+    help other collaborators without the same global config.
+  - Added a repo-level .gitignore (**/.claude/settings.local.json) so the
+    rule is enforced for every collaborator, and git rm --cached both
+    files.
+
+- Read bennu-handoff-plan.md (a prior session's handoff doc describing a
+  Lab/ vs Remora/ reorg — confirmed already landed on main — and a not-yet-
+  built manifest-driven experiment runner). Scoped this session's work to
+  exactly two things the user asked for: moving experiment data fully
+  outside the repo via a shell env var, and a manifest-driven runner for
+  lab bench experiments (Lab/ only — ship-side Remora/run.py explicitly out
+  of scope, confirmed with user).
+
+- Built the manifest-driven bench runner:
+  - New Lab/labrun.py: reads $EXPERIMENTS/<name>/manifest.json, validates
+    it (hard error + difflib "did you mean" suggestion on unknown/typo'd
+    keys, pin-role check that lamp=5/ozone=6 aren't swapped, setpoint vs.
+    tickle-low-threshold consistency), refuses to run if the resolved
+    experiment directory is at/under the repo root (the actual enforcement
+    that data never re-enters the repo), then spawns Lab/o3.py and
+    Lab/exprun.py as subprocesses with cwd set to the experiment directory.
+    Supervises both at 1Hz for process death, o3.py's "RECOVERY abandoned"
+    log line, and a >30s stall with no new READ line; shuts down via
+    escalating SIGINT (10s) -> SIGTERM (5s) -> SIGKILL, then unconditionally
+    forces GPIO pins 5 and 6 low via pinctrl with a logged readback. Writes
+    run_record.json (resolved manifest + exact child argv + t0 + git rev +
+    hostname) and runlog.tsv into the experiment directory. Supports
+    --dry-run (validates and prints resolved commands + output layout,
+    spawns nothing, touches no pins).
+  - New Lab/example_manifest.json: the operator-facing manifest template.
+  - Lab/o3.py: added --log-dir (defaults to the prior hardcoded
+    <script_dir>/o3logs path, so standalone use is unchanged) — this was
+    the actual blocker, since o3.py could not previously be told to log
+    anywhere but inside the repo. Also GPIO.cleanup(args.gpiopin) instead
+    of bare, and wrapped the control loop in except KeyboardInterrupt: pass
+    (cosmetic — finally already drops the pin on SIGINT).
+  - .gitignore: added Lab/o3logs/ and Lab/explog/ as a backstop for anyone
+    still running o3.py/exprun.py by hand outside the runner.
+  - Lab/exprun.py and Lab/annotate_tsv.py needed no changes — both already
+    work correctly once the runner's cwd is the experiment directory.
+
+  Verified off-Pi (o3.py/exprun.py need RPi.GPIO/picamera2/pytesseract/cv2,
+  Pi-only): --dry-run against a valid manifest resolves the exact expected
+  argv; a typo'd key (duraton_min) is rejected with the correct suggestion;
+  swapped lamp/ozone pins are rejected on both fields; a missing
+  $EXPERIMENTS is a hard error; an experiment directory located inside the
+  repo is rejected by the containment check.
+
+  Still open (needs real hardware, not done this session): an actual short
+  end-to-end bench run confirming the repo stays clean throughout, the
+  output layout matches, and pinctrl reads both pins low after a normal
+  finish and after a mid-run Ctrl-C.
+
+Files changed:
+  .gitignore
+  Lab/o3.py
+  Lab/labrun.py (new)
+  Lab/example_manifest.json (new)

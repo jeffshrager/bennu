@@ -414,6 +414,8 @@ def main():
                         help="Open an upscaled live feed and drag a box with the mouse to pick the OCR crop "
                              "region interactively (overrides --vidpos). Prints the resulting --vidpos value "
                              "to reuse next time without recalibrating.")
+    parser.add_argument("--log-dir", default=None,
+                        help="Directory to write the run log into (default: o3logs/ next to this script)")
     args = parser.parse_args()
 
     if args.calibrate:
@@ -480,9 +482,10 @@ def main():
         GPIO.setup(args.gpiopin, GPIO.OUT, initial=GPIO.LOW)
 
     # Open log file
-    os.makedirs(LOG_DIR, exist_ok=True)
+    log_dir = args.log_dir if args.log_dir is not None else LOG_DIR
+    os.makedirs(log_dir, exist_ok=True)
     ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-    log_path = os.path.join(LOG_DIR, f'o3_{ts}.log')
+    log_path = os.path.join(log_dir, f'o3_{ts}.log')
     log_lock = threading.Lock()
 
     def log(msg):
@@ -697,11 +700,13 @@ def main():
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     break
 
+        except KeyboardInterrupt:
+            pass
         finally:
             picam2.stop()
             cv2.destroyAllWindows()
             if gpio_active:
-                GPIO.cleanup()
+                GPIO.cleanup(args.gpiopin)
             log(f"# run ended: {datetime.now().isoformat()}")
             print(f"\nLog saved: {log_path}")
 
