@@ -3,9 +3,28 @@
 ************************************************
 *** IMPORTANT NOTES:
 ************************************************
-Chronjob reboot now at 6pm (Korean time!)
+Chronjob reboot now at 6pm (I think it's on PDT)
 MAKE SURE YOU COPY A NEW RUN.SH WITH IMPROVED LOGGING NOTES NEXT TIME YOU RUN!
 ************************************************
+
+Overview of the process:
+
+See below:
+
+  How to connect to the remora
+  How to set up the experment run.sh
+  How to start an experiment
+  How to stop an experiment and get the data
+
+*********************************************************************
+IMPORTANT!!! When your experiment ends, by whatever mechaism, be sure
+to do this:
+
+   cd /home/bennu/software/bennu; cp lamp_all_off.config lamp.config
+
+otherwise the lamps will be left in whatever was the last state when
+the experiment was stopped, either normally or by reboot!
+*********************************************************************
 
 =====================================================================
 BEWARE THE CHRONJOB REBOOT! (See below)
@@ -51,16 +70,45 @@ then to the pi:
 
 ssh bennu@64.13.145.93 ssh localhost -p 21965
 
-Then
+=====================================================================
+How to set up the experment run.sh
+
+This is the simplest all-on/all-off experiment. The only things you'll
+want to change are the SLEEPSECS and [my experiment]
+
+#!/bin/bash
+# Standard header:
+BASE="/home/bennu/software/bennu"
+CONFIG="$BASE/lamp.config"
+ALLON="$BASE/lamp_all_on.config"
+ALLOFF="$BASE/lamp_all_off.config"
+SLEEPSECS=600  # 10 minutes
+LOGFILE="$BASE/lamp_controller.log"
+# Hello:
+echo "**************** Experiment [my experiment] started ****************" >> "$LOGFILE"
+# Driver loop:
+while true; do
+    echo "ALL ON...waiting $SLEEPSECS seconds..."
+    cp "$ALLON" "$CONFIG"
+    sleep "$SLEEPSECS"
+    echo "ALL OFF...waiting $SLEEPSECS seconds..."
+    cp "$ALLOFF" "$CONFIG"
+    sleep "$SLEEPSECS"
+done
+# Goodbye (often never gets here because most experiments just run forever)
+echo "**************** Experiment [my experiment] ended ****************" >> "$LOGFILE"
+
+=====================================================================
+How to start an experiment:
 
     cd software/bennu
     rm lamp_controller.log*
     cd experiments
-    mkdir [my experiment]
+    mkdir [my experiment] # usually date_note/, as : 20270721_shiptest/
     cd [my experiment]
     cat > run.sh
     [paste in the new run.sh]
-    ^d
+   ^d
     cat run.sh   # Make sure it's right
     nohup bash run.sh > out.log 2>&1 &
     cd ../..
@@ -175,10 +223,12 @@ is in PST. (This was really fucking hard to figure out!)
 
 *********************************************************************
 IMPORTANT!!! When your experiment ends, by whatever mechaism, be sure
-to do the above, otherwise the lamps will be left in whatever was the
-last state when the experiment was stopped, either normally or by
-reboot:
+to do this:
+
    cd /home/bennu/software/bennu; cp lamp_all_off.config lamp.config
+
+otherwise the lamps will be left in whatever was the last state when
+the experiment was stopped, either normally or by reboot!
 *********************************************************************
 
 (FFF Note to future self: Make the demon, or run.py turn all the
