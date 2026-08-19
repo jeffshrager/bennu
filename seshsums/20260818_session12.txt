@@ -59,6 +59,49 @@ Work done:
 - Wrote ../Data/20260818_RT_a/lamp_lag_analysis.md documenting the
   rig, both analyses, results, and the interpretation caveats above.
 
+- User asked to clarify the sign of +0.0028 ppm: confirmed from
+  group_tests() in lamp_analysis.py that diff = mean(ON) - mean(OFF), so
+  positive means methane reads *higher* during nominal ON at lag~255s
+  (lamps associated with a rise, not a drop).
+
+- User then raised a further problem: the full on/off cycle period is
+  only ~630s (~330s on-hold + ~300s off-hold), and the best-fit lag
+  (~255s) is a large fraction of a single phase's duration, so shifting
+  by that much doesn't cleanly represent "delayed response" - it
+  substantially reaches into the adjacent phase. Agreed this makes the
+  effect's *sign* unreliable at this lag (aliasing: the same apparent
+  sign could equally arise from an opposite-signed effect at the other
+  transition). Added this as an explicit caveat to lamp_lag_analysis.md.
+
+- User asked to strip implementation/coding detail out of
+  lamp_lag_analysis.md (function names, script internals, a "Tooling
+  changes" section) and keep it to the analysis and results only -
+  rewrote the doc accordingly; that level of detail now lives only here
+  in the seshsum.
+
+- User caught a logic error in the multiple-testing/smoothness
+  paragraph: the smoothness observation should NOT be framed as
+  evidence that could push p *below* 0.063 (better than raw) - the
+  user's actual point was that it argues against needing to penalize
+  p=0.063 *up* to a much worse, fully-independent-tests-corrected value
+  (since the 61 lags are highly correlated, not independent). Rewrote
+  that section so the smoothness argument is correctly framed as "a
+  reason not to fully discount to a near-worthless corrected p," with
+  p=0.063 stated explicitly as an optimistic upper bound and the true
+  corrected p somewhere between 0.063 and non-significant.
+
+- User proposed an alternative "best case" reading: that under a theory
+  where the lamps *reduce* methane, the best case is ~-0.0002 ppm at
+  near-significance. Checked this against lamp_lag_scan.csv rather than
+  taking it on faith: the sample-level (Welch) diff is positive at
+  *every* lag from 0-300s (no lag anywhere supports a reduction
+  reading), and the cycle-paired effect only goes negative for lags
+  0-~65s, where its best p is p~0.39 at lag=0 (effect ~-0.0017 ppm) -
+  nowhere near significant. So a reduction story is not supported by
+  this data at all; the only near-significant reading is the increase
+  story at lag~255s already documented. Added this as an explicit
+  "checked and ruled out" note in lamp_lag_analysis.md.
+
 Pre-existing state noted, not touched this session: Remora/lamp_*.config
 files show as deleted in git status with an untracked
 Remora/lamp_configs/ directory in their place - this reorg predates this
