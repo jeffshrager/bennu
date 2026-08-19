@@ -9,9 +9,18 @@ Input log lines (one per 5-s sample) look like:
     2026-05-02T17:18:54-0700 [INFO] Sensors: time=... methane=1.849 windspeed=4.09 current=0.325
     2026-05-02T17:19:24-0700 [ERROR] Error reading methane sensor: ...
 
-Lamp state is inferred from the driver current (bimodal: ~0.325 A OFF,
-~0.60 A ON). Baseline step-jumps in the methane trace (sensor
-recalibration ticks, unrelated to the lamp cycle) are detected and removed.
+Lamp state is inferred one of two ways, depending on what the log contains:
+  - Quad-log rigs (GPIO-driven "bowport/bowstar/sternport/sternstar" quads;
+    current sensor absent/always 0): state is read from "Quad <name> set to
+    ON/OFF" events. ON = all quads simultaneously energized (the steady
+    hold after the sequential ramp-up); OFF = all quads off. Samples taken
+    while only *some* quads are on (the ramp-up/ramp-down transition) are
+    excluded from the ON/OFF comparison rather than assigned to either
+    state.
+  - Current-sensor rigs: state is inferred from the driver current
+    (bimodal: ~0.325 A OFF, ~0.60 A ON).
+Baseline step-jumps in the methane trace (sensor recalibration ticks,
+unrelated to the lamp cycle) are detected and removed.
 
 Usage:
     python3 lamp_analysis.py <logfile> [-o report.pdf]
@@ -68,6 +77,67 @@ def parse_log(paths: list[str]) -> pd.DataFrame:
     df = df.dropna(subset=["methane", "current"])
     df = df.sort_values("time").drop_duplicates(subset="time", keep="first")
     return df.reset_index(drop=True)
+
+
+QUAD_RE = re.compile(r"^(?P<t>\S+).*Quad (?P<name>\w+) set to (?P<state>ON|OFF)")
+
+
+def parse_quad_events(paths: list[str]) -> list[tuple[datetime, str, bool]]:
+    """Parse 'Quad <name> set to ON/OFF' events from one or more log files."""
+    events = []
+    for path in paths:
+        with open(path) as fh:
+            for line in fh:
+                m = QUAD_RE.search(line)
+                if not m:
+                    continue
+                try:
+                    t = datetime.fromisoformat(m["t"])
+                except ValueError:
+                    continue
+                # Sensor timestamps (used for df["time"]) are naive local
+                # time; strip the offset here so the two are comparable.
+                t = t.replace(tzinfo=None)
+                events.append((t, m["name"], m["state"] == "ON"))
+    events.sort(key=lambda e: e[0])
+    return events
+
+
+def lamp_state_from_quads(
+    times: pd.Series, events: list[tuple[datetime, str, bool]]
+) -> tuple[np.ndarray, int]:
+    """
+    Derive lamp state per sensor sample from quad ON/OFF events.
+
+    ON (1)  = every quad seen in the log is simultaneously energized (the
+              steady hold after the sequential ramp-up).
+    OFF (0) = every quad is off.
+    Ramp (-1) = some but not all quads on (sequential ramp-up/down);
+              excluded from the ON/OFF comparison.
+
+    Returns the state array and the count of ramp samples.
+    """
+    quad_names = sorted({name for _, name, _ in events})
+    n_quads = len(quad_names)
+    on = {name: False for name in quad_names}
+    lamp = np.zeros(len(times), dtype=int)
+    ei = 0
+    n_on = 0
+    for i, t in enumerate(times):
+        while ei < len(events) and events[ei][0] <= t:
+            _, name, is_on = events[ei]
+            if on[name] != is_on:
+                on[name] = is_on
+                n_on += 1 if is_on else -1
+            ei += 1
+        if n_on == n_quads:
+            lamp[i] = 1
+        elif n_on == 0:
+            lamp[i] = 0
+        else:
+            lamp[i] = -1
+    n_ramp = int(np.sum(lamp == -1))
+    return lamp, n_ramp
 
 
 # ---------------------------------------------------------------------------
@@ -354,7 +424,8 @@ def fmt_p(p: float) -> str:
 
 
 def build_pdf(out_pdf, plot_png, df, cycles, jumps, group, cycle_test,
-              wind, reg, thr, n_trimmed, n_wind_faults):
+              wind, reg, thr, n_trimmed, n_wind_faults, lamp_method="current",
+              n_ramp=0):
     doc = SimpleDocTemplate(out_pdf, pagesize=letter,
                             leftMargin=0.6*inch, rightMargin=0.6*inch,
                             topMargin=0.6*inch, bottomMargin=0.6*inch)
@@ -384,10 +455,23 @@ def build_pdf(out_pdf, plot_png, df, cycles, jumps, group, cycle_test,
             f"<b>Windspeed cleanup:</b> {n_wind_faults} sample(s) with fault-code "
             f"reads (values far outside the operating band) were replaced by "
             f"interpolation from neighbouring valid samples.", body))
-    els.append(Paragraph(
-        f"Lamp state was inferred from driver current using a bimodal split at "
-        f"threshold <b>{thr:.3f} A</b> (below = OFF, above = ON). "
-        f"Cycles identified: {n_on_c} ON, {n_off_c} OFF.", body))
+    if lamp_method == "quad-log":
+        els.append(Paragraph(
+            f"Lamp state was inferred from explicit 'Quad ... set to ON/OFF' log "
+            f"events: ON = all quads simultaneously energized (the steady hold "
+            f"after the sequential ramp-up), OFF = all quads off. "
+            f"Cycles identified: {n_on_c} ON, {n_off_c} OFF.", body))
+        if n_ramp > 0:
+            els.append(Paragraph(
+                f"<b>Ramp-up/ramp-down exclusion:</b> {n_ramp} sample(s) taken "
+                f"while only some quads were energized (sequential lamp "
+                f"start-up/shutdown) were excluded from the ON/OFF comparison.",
+                body))
+    else:
+        els.append(Paragraph(
+            f"Lamp state was inferred from driver current using a bimodal split at "
+            f"threshold <b>{thr:.3f} A</b> (below = OFF, above = ON). "
+            f"Cycles identified: {n_on_c} ON, {n_off_c} OFF.", body))
     els.append(Paragraph(
         f"Baseline step-jumps were detected as first-difference outliers "
         f"(|Δ| &gt; 8·MAD-scaled σ) and removed by subtracting each shift from "
@@ -555,7 +639,17 @@ def main():
     if len(df) < 100:
         sys.exit(f"Too few valid samples parsed ({len(df)}).")
 
-    df["lamp"], thr = infer_lamp_state(df["current"].values)
+    quad_events = parse_quad_events(args.logfile)
+    if quad_events:
+        lamp_method = "quad-log"
+        thr = None
+        df["lamp"], n_ramp = lamp_state_from_quads(df["time"], quad_events)
+        df = df.loc[df["lamp"] != -1].reset_index(drop=True)
+    else:
+        lamp_method = "current"
+        n_ramp = 0
+        df["lamp"], thr = infer_lamp_state(df["current"].values)
+
     df, n_trimmed = trim_to_experiment(df)
     if len(df) < 100:
         sys.exit(f"Too few samples after trim ({len(df)}).")
@@ -575,10 +669,10 @@ def main():
     png = "/tmp/_lamp_plot.png"
     make_plot(df, cycles, png)
     build_pdf(args.out, png, df, cycles, jumps, group, cyc_t, wind, reg, thr,
-              n_trimmed, n_wind_faults)
+              n_trimmed, n_wind_faults, lamp_method, n_ramp)
     print(f"Wrote {args.out}  ({len(df)} samples, {n_trimmed} trimmed, "
-          f"{len(cycles)} cycles, {len(jumps)} jumps corrected, "
-          f"{n_wind_faults} wind faults interpolated)")
+          f"{n_ramp} ramp samples excluded, {len(cycles)} cycles, "
+          f"{len(jumps)} jumps corrected, {n_wind_faults} wind faults interpolated)")
 
 
 if __name__ == "__main__":
