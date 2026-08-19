@@ -390,7 +390,23 @@ From the src dir
    scp -p "rome:/home/bennu/software/bennu/*log*" .
 ```
 
+Here's how to scp from the ship when logged into the relay directly:
+
+   scp -P 21965 localhost:/path/to/remote/file .
+example:
+   scp -P 21965 localhost:software/bennu/*.log  .
+or for a dir:
+   scp -rP 21965 localhost:/path/to/remote/dir/ .
+
 Note that -p preserves the log's timestamps.
+
+and here's how to scp (a dir) from the relay to my mac:
+
+   scp -rP bennu@64.13.145.93:/path/to/remote/dir/ .
+
+Once you get a log you can use:
+
+   egrep -i "on|off" *log*
 
 IT IS CRITICAL TO UNDERSTAND that the logs are automagically
 renumbered by the log mananger, and up to 30 (I think) logs are
