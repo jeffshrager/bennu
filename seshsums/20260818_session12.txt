@@ -102,6 +102,21 @@ Work done:
   story at lag~255s already documented. Added this as an explicit
   "checked and ruled out" note in lamp_lag_analysis.md.
 
+- User stated they don't trust the sample-level (Welch) comparison at
+  all and consider cycle-paired the only valid test here - consistent
+  with the pseudoreplication problem (consecutive 5s samples within a
+  single ~300-330s hold are highly autocorrelated, so the sample-level
+  test's ~2000-per-condition n is not a real independent sample size and
+  manufactures artificially low p-values). Under cycle-paired alone, the
+  best result across the whole 61-lag scan is only p~0.21 (lag~275s,
+  +0.0021 ppm) - not near-significant - and the reduction-direction case
+  is even worse (p~0.39 at lag=0). Rewrote lamp_lag_analysis.md to make
+  cycle-paired the primary/trusted metric throughout, demote the Welch
+  p~0.063 figure to "reference only, not trusted, artifact of
+  pseudoreplication," and revise the bottom line accordingly: under the
+  trusted test, this experiment shows no significant or near-significant
+  lagged lamp effect at any tested lag.
+
 Pre-existing state noted, not touched this session: Remora/lamp_*.config
 files show as deleted in git status with an untracked
 Remora/lamp_configs/ directory in their place - this reorg predates this
