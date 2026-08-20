@@ -34,9 +34,10 @@ from ax import (
 
 
 LAMP_PIN = 5  # BCM numbering
-WINDOW = 300  # samples kept/shown on the plot
+WINDOW = 300  # samples kept in the buffer (upper bound for history display)
 DEFAULT_SMOOTH_WINDOW = 10  # running-mean window (samples) applied before plotting
 MAX_SMOOTH_WINDOW = 50
+DEFAULT_HISTORY = 100  # points shown on the plot at once
 
 
 try:
@@ -136,11 +137,11 @@ def _serial_reader(port, baud):
 # ---------------------------------------------------------------------------
 # GUI
 # ---------------------------------------------------------------------------
-def build_gui(initial_window=DEFAULT_SMOOTH_WINDOW):
-    fig = plt.figure(figsize=(10, 6.6))
+def build_gui(initial_window=DEFAULT_SMOOTH_WINDOW, initial_history=DEFAULT_HISTORY):
+    fig = plt.figure(figsize=(10, 7.0))
     fig.canvas.manager.set_window_title("Axetris LGD - Live")
 
-    ax = fig.add_axes([0.10, 0.34, 0.85, 0.58])
+    ax = fig.add_axes([0.10, 0.40, 0.85, 0.52])
     ax.set_xlabel("Elapsed time (s)")
     ax.set_ylabel("Concentration")
     ax.grid(True, alpha=0.3)
@@ -149,22 +150,34 @@ def build_gui(initial_window=DEFAULT_SMOOTH_WINDOW):
     (line2,) = ax.plot([], [], color="darkorange", lw=1.5, label="gas2")
     ax.legend(loc="upper left", fontsize=8)
 
-    status_text = fig.text(0.10, 0.20, "", fontsize=9, family="monospace")
+    status_text = fig.text(0.10, 0.26, "", fontsize=9, family="monospace")
 
     smooth_state = {"window": initial_window}
-    ax_smooth = fig.add_axes([0.15, 0.13, 0.70, 0.03])
+    ax_smooth = fig.add_axes([0.15, 0.19, 0.70, 0.03])
     smooth_slider = Slider(
         ax_smooth, "smoothing (samples)", 1, MAX_SMOOTH_WINDOW,
         valinit=initial_window, valstep=1,
     )
     smooth_slider.on_changed(lambda val: smooth_state.__setitem__("window", int(val)))
-    fig._smooth_slider = smooth_slider  # keep a reference alive
+
+    history_state = {"points": initial_history}
+    ax_hist = fig.add_axes([0.15, 0.13, 0.70, 0.03])
+    hist_slider = Slider(
+        ax_hist, "history (points)", 5, WINDOW,
+        valinit=initial_history, valstep=5,
+    )
+    hist_slider.on_changed(lambda val: history_state.__setitem__("points", int(val)))
 
     lamp_state = {"on": False}
     ax_lamp = fig.add_axes([0.40, 0.03, 0.20, 0.09])
     lamp_button = Button(ax_lamp, "Lamp", color="black", hovercolor="dimgray")
     lamp_button.label.set_color("white")
     lamp_button.label.set_fontweight("bold")
+
+    # Widgets must be kept alive by a strong reference for the life of the
+    # figure, or matplotlib's callbacks silently stop firing once garbage
+    # collected (this is what broke the Lamp button previously).
+    fig._widgets = (smooth_slider, hist_slider, lamp_button)
 
     def _paint_lamp():
         if lamp_state["on"]:
@@ -195,23 +208,32 @@ def build_gui(initial_window=DEFAULT_SMOOTH_WINDOW):
             g1 = rolling_mean(g1, window)
             g2 = rolling_mean(g2, window)
 
-            t0 = times[0]
-            xs = [(t - t0).total_seconds() for t in times]
-            line1.set_data(xs, g1)
-            line2.set_data(xs, g2)
+            # Smooth over the full buffer, then window down to the last
+            # `history` points for display, so early points in the visible
+            # window still get smoothing context from before it.
+            hist = history_state["points"]
+            times_d = times[-hist:]
+            g1_d = g1[-hist:]
+            g2_d = g2[-hist:]
+
+            t0 = times_d[0]
+            xs = [(t - t0).total_seconds() for t in times_d]
+            line1.set_data(xs, g1_d)
+            line2.set_data(xs, g2_d)
             ax.set_xlim(0, max(xs[-1], 1))
 
-            finite = [v for v in g1 + g2 if v == v]  # drop NaN
+            finite = [v for v in g1_d + g2_d if v == v]  # drop NaN
             if finite:
                 lo, hi = min(finite), max(finite)
                 pad = max((hi - lo) * 0.1, 0.01)
                 ax.set_ylim(lo - pad, hi + pad)
 
-            latest = f"gas1={g1[-1]:.3f}"
-            if g2[-1] == g2[-1]:  # not NaN
-                latest += f"  gas2={g2[-1]:.3f}"
+            latest = f"gas1={g1_d[-1]:.3f}"
+            if g2_d[-1] == g2_d[-1]:  # not NaN
+                latest += f"  gas2={g2_d[-1]:.3f}"
             status_text.set_text(
-                f"{times[-1].strftime('%H:%M:%S')}  {latest}  ({len(times)} pts)"
+                f"{times_d[-1].strftime('%H:%M:%S')}  {latest}  "
+                f"({len(times_d)}/{len(times)} pts)"
             )
         else:
             status_text.set_text("waiting for data...")
@@ -229,6 +251,9 @@ def main():
     ap.add_argument("--window", type=int, default=DEFAULT_SMOOTH_WINDOW,
                      help=f"initial running-mean smoothing window, in samples "
                           f"(default {DEFAULT_SMOOTH_WINDOW}); adjustable live via the slider")
+    ap.add_argument("--history", type=int, default=DEFAULT_HISTORY,
+                     help=f"initial number of points shown on the plot "
+                          f"(default {DEFAULT_HISTORY}, max {WINDOW}); adjustable live via the slider")
     args = ap.parse_args()
 
     try:
@@ -243,7 +268,7 @@ def main():
     reader = threading.Thread(target=_serial_reader, args=(port, args.baud), daemon=True)
     reader.start()
 
-    fig, ani = build_gui(initial_window=args.window)
+    fig, ani = build_gui(initial_window=args.window, initial_history=args.history)
     try:
         plt.show()
     finally:
