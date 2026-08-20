@@ -153,7 +153,7 @@ def build_gui(initial_window=DEFAULT_SMOOTH_WINDOW, initial_history=DEFAULT_HIST
     status_text = fig.text(0.10, 0.26, "", fontsize=9, family="monospace")
 
     smooth_state = {"window": initial_window}
-    ax_smooth = fig.add_axes([0.15, 0.19, 0.70, 0.03])
+    ax_smooth = fig.add_axes([0.32, 0.19, 0.53, 0.03])
     smooth_slider = Slider(
         ax_smooth, "smoothing (samples)", 1, MAX_SMOOTH_WINDOW,
         valinit=initial_window, valstep=1,
@@ -161,7 +161,7 @@ def build_gui(initial_window=DEFAULT_SMOOTH_WINDOW, initial_history=DEFAULT_HIST
     smooth_slider.on_changed(lambda val: smooth_state.__setitem__("window", int(val)))
 
     history_state = {"points": initial_history}
-    ax_hist = fig.add_axes([0.15, 0.13, 0.70, 0.03])
+    ax_hist = fig.add_axes([0.32, 0.13, 0.53, 0.03])
     hist_slider = Slider(
         ax_hist, "history (points)", 5, WINDOW,
         valinit=initial_history, valstep=5,
@@ -231,9 +231,16 @@ def build_gui(initial_window=DEFAULT_SMOOTH_WINDOW, initial_history=DEFAULT_HIST
             latest = f"gas1={g1_d[-1]:.3f}"
             if g2_d[-1] == g2_d[-1]:  # not NaN
                 latest += f"  gas2={g2_d[-1]:.3f}"
+
+            if len(times) >= 2:
+                span = (times[-1] - times[0]).total_seconds()
+                rate = f"{(len(times) - 1) / span:.2f} Hz" if span > 0 else "n/a"
+            else:
+                rate = "n/a"
+
             status_text.set_text(
                 f"{times_d[-1].strftime('%H:%M:%S')}  {latest}  "
-                f"({len(times_d)}/{len(times)} pts)"
+                f"({len(times_d)}/{len(times)} pts, {rate})"
             )
         else:
             status_text.set_text("waiting for data...")
