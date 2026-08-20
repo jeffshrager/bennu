@@ -21,7 +21,7 @@ from datetime import datetime
 
 import matplotlib.animation as animation
 import matplotlib.pyplot as plt
-from matplotlib.widgets import Button
+from matplotlib.widgets import Button, Slider
 
 from ax import (
     DEFAULT_BAUD,
@@ -35,6 +35,8 @@ from ax import (
 
 LAMP_PIN = 5  # BCM numbering
 WINDOW = 300  # samples kept/shown on the plot
+DEFAULT_SMOOTH_WINDOW = 10  # running-mean window (samples) applied before plotting
+MAX_SMOOTH_WINDOW = 50
 
 
 try:
@@ -43,6 +45,19 @@ try:
 except ImportError:
     GPIO = None
     HAVE_GPIO = False
+
+
+def rolling_mean(values, window):
+    """Trailing running mean over the last `window` non-NaN samples."""
+    if window <= 1:
+        return list(values)
+    out = []
+    buf = deque(maxlen=window)
+    for v in values:
+        if v == v:  # skip NaN
+            buf.append(v)
+        out.append(sum(buf) / len(buf) if buf else float("nan"))
+    return out
 
 
 def setup_lamp_gpio():
@@ -121,11 +136,11 @@ def _serial_reader(port, baud):
 # ---------------------------------------------------------------------------
 # GUI
 # ---------------------------------------------------------------------------
-def build_gui():
-    fig = plt.figure(figsize=(10, 6))
+def build_gui(initial_window=DEFAULT_SMOOTH_WINDOW):
+    fig = plt.figure(figsize=(10, 6.6))
     fig.canvas.manager.set_window_title("Axetris LGD - Live")
 
-    ax = fig.add_axes([0.10, 0.28, 0.85, 0.65])
+    ax = fig.add_axes([0.10, 0.34, 0.85, 0.58])
     ax.set_xlabel("Elapsed time (s)")
     ax.set_ylabel("Concentration")
     ax.grid(True, alpha=0.3)
@@ -134,7 +149,16 @@ def build_gui():
     (line2,) = ax.plot([], [], color="darkorange", lw=1.5, label="gas2")
     ax.legend(loc="upper left", fontsize=8)
 
-    status_text = fig.text(0.10, 0.16, "", fontsize=9, family="monospace")
+    status_text = fig.text(0.10, 0.20, "", fontsize=9, family="monospace")
+
+    smooth_state = {"window": initial_window}
+    ax_smooth = fig.add_axes([0.15, 0.13, 0.70, 0.03])
+    smooth_slider = Slider(
+        ax_smooth, "smoothing (samples)", 1, MAX_SMOOTH_WINDOW,
+        valinit=initial_window, valstep=1,
+    )
+    smooth_slider.on_changed(lambda val: smooth_state.__setitem__("window", int(val)))
+    fig._smooth_slider = smooth_slider  # keep a reference alive
 
     lamp_state = {"on": False}
     ax_lamp = fig.add_axes([0.40, 0.03, 0.20, 0.09])
@@ -167,6 +191,10 @@ def build_gui():
         if _reader_error[0]:
             status_text.set_text(f"[error] {_reader_error[0]}")
         elif times:
+            window = smooth_state["window"]
+            g1 = rolling_mean(g1, window)
+            g2 = rolling_mean(g2, window)
+
             t0 = times[0]
             xs = [(t - t0).total_seconds() for t in times]
             line1.set_data(xs, g1)
@@ -198,6 +226,9 @@ def main():
     ap = argparse.ArgumentParser(description="Axetris LGD-Compact reader with live GUI + lamp control.")
     ap.add_argument("--port", help="Serial port (e.g., /dev/ttyUSB0). Auto-detect if omitted.")
     ap.add_argument("--baud", type=int, default=DEFAULT_BAUD, help="Baud rate (default 9600).")
+    ap.add_argument("--window", type=int, default=DEFAULT_SMOOTH_WINDOW,
+                     help=f"initial running-mean smoothing window, in samples "
+                          f"(default {DEFAULT_SMOOTH_WINDOW}); adjustable live via the slider")
     args = ap.parse_args()
 
     try:
@@ -212,7 +243,7 @@ def main():
     reader = threading.Thread(target=_serial_reader, args=(port, args.baud), daemon=True)
     reader.start()
 
-    fig, ani = build_gui()
+    fig, ani = build_gui(initial_window=args.window)
     try:
         plt.show()
     finally:
