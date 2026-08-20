@@ -117,6 +117,24 @@ Work done:
   trusted test, this experiment shows no significant or near-significant
   lagged lamp effect at any tested lag.
 
+- User asked whether the lag-scan curves should wrap around and match
+  lag=0 at the full cycle period, and whether that's ~600s. Measured the
+  actual period directly from the log (time between successive
+  sternstar-ON events, i.e. successive ramp-up completions): median
+  ~724s, not ~600-630s - the doc's earlier "~630s" figure (used in the
+  sign/aliasing caveat) had summed only the on-hold (330s) + off-hold
+  (300s) and forgotten the ~90s ramp, which is still part of the
+  periodic event timeline even though those samples are excluded from
+  ON/OFF classification. Confirmed the expectation is correct in
+  principle (shifting by exactly one full period should reproduce the
+  lag=0 labeling almost exactly) but that wraparound would only show up
+  around lag~720s, well past the 0-300s scanned so far - offered to
+  extend the scan to ~1450s (about two periods) as a sanity check on the
+  lag-shifting logic, not yet done (user hadn't confirmed by end of
+  session). Fixed the "~630s" figure to "~724s" in
+  lamp_lag_analysis.md and added the measured period to its Experiment
+  section.
+
 Pre-existing state noted, not touched this session: Remora/lamp_*.config
 files show as deleted in git status with an untracked
 Remora/lamp_configs/ directory in their place - this reorg predates this

@@ -1,0 +1,48 @@
+Session: 20260820 session 13
+
+Work done:
+- Created Remora/axg.py, a GUI version of Remora/ax.py. It reuses ax.py's
+  serial protocol functions directly (find_serial_port, open_serial,
+  read_packet, parse_measurement, maybe_start_measurements) rather than
+  reimplementing packet parsing, and runs the serial read loop in a
+  background thread feeding a shared, lock-protected ring buffer
+  (deque, 300 samples).
+- The GUI (matplotlib, styled after Lab/axb.py's live-plot pattern) shows
+  gas1/gas2 on a scrolling line plot (x-axis = elapsed seconds, y-axis
+  autoscaled to the visible window) plus a status line with the latest
+  reading and timestamp.
+- Added a "Lamp" button (matplotlib Button widget) that toggles between
+  black (off) and blue (on) by directly repainting the button axes'
+  facecolor - matches the same color/hovercolor mechanism the Button
+  widget itself uses internally, so it stays correct across hover
+  events. On click it drives GPIO pin 5 (BCM numbering, matching this
+  repo's RPi.GPIO/BCM convention used in minitest.py and test.py) high,
+  and holds it high until clicked again to turn off; pin is forced low
+  and released on exit (normal or exception) via a finally block.
+- RPi.GPIO is optional at import time: if unavailable (e.g. running on a
+  non-Pi dev machine), axg.py prints a warning and the Lamp button still
+  works as a UI toggle, it just doesn't drive real hardware. This let me
+  smoke-test the GUI (figure layout, live-plot rendering with synthetic
+  staggered-timestamp data, and the black/blue button repaint) on this
+  Mac using the "test" conda env (matplotlib present; RPi.GPIO/gpiozero
+  are not, as expected off-Pi) without a real Axetris device or Pi
+  attached. Rendered PNGs confirmed the plot lines, status text, and
+  both lamp button color states look right; temp test script and PNGs
+  were deleted after verifying.
+- Did not test against real Axetris hardware or a real GPIO pin 5 (no
+  device attached in this environment) - that still needs verification
+  on the Pi.
+
+Pre-existing state noted, not touched this session: seshsums/
+20260818_session12.txt was already showing as modified (uncommitted) in
+git status at the start of this session - left as-is, not part of this
+session's work.
+
+Files changed:
+  Remora/axg.py (new)
+
+Next steps (not done this session):
+  - Verify on the actual Raspberry Pi with the Axetris device attached
+    and confirm GPIO pin 5 physically toggles the lamp as expected.
+  - Consider whether CSV logging (like ax.py's --csv) is wanted in
+    axg.py - left out for now since it wasn't asked for.
