@@ -144,6 +144,7 @@ def build_gui(initial_window=DEFAULT_SMOOTH_WINDOW, initial_history=DEFAULT_HIST
     ax = fig.add_axes([0.10, 0.40, 0.85, 0.52])
     ax.set_xlabel("Elapsed time (s)")
     ax.set_ylabel("Concentration")
+    ax.set_ylim(1, 3)
     ax.grid(True, alpha=0.3)
 
     (line1,) = ax.plot([], [], color="steelblue", lw=1.5, label="gas1")
@@ -221,12 +222,6 @@ def build_gui(initial_window=DEFAULT_SMOOTH_WINDOW, initial_history=DEFAULT_HIST
             line1.set_data(xs, g1_d)
             line2.set_data(xs, g2_d)
             ax.set_xlim(0, max(xs[-1], 1))
-
-            finite = [v for v in g1_d + g2_d if v == v]  # drop NaN
-            if finite:
-                lo, hi = min(finite), max(finite)
-                pad = max((hi - lo) * 0.1, 0.01)
-                ax.set_ylim(lo - pad, hi + pad)
 
             latest = f"gas1={g1_d[-1]:.3f}"
             if g2_d[-1] == g2_d[-1]:  # not NaN
