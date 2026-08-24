@@ -50,6 +50,8 @@ TEST_SIGNAL_INIT = 2.0
 TEST_FEED_INTERVAL = 0.2  # seconds between simulated samples in --test mode
 TEST_NOISE_FRACTION = 0.05  # +/- 5% random noise applied to the TEST signal
 
+LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mobile_bennu_logo.png")
+
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "axg.json")
 CONFIG_DEFAULTS = {"smooth_window": DEFAULT_SMOOTH_WINDOW, "history": DEFAULT_HISTORY}
 
@@ -143,6 +145,19 @@ def build_gui(config, initial_window=DEFAULT_SMOOTH_WINDOW, initial_history=DEFA
               test_mode=False):
     fig = plt.figure(figsize=(10, 7.0))
     fig.canvas.manager.set_window_title("Axetris LGD - Live")
+
+    try:
+        logo_img = plt.imread(LOGO_PATH)
+        logo_h, logo_w = logo_img.shape[0], logo_img.shape[1]
+        logo_axes_w = 0.14
+        logo_axes_h = logo_axes_w * (logo_h / logo_w) * (fig.get_figwidth() / fig.get_figheight())
+        # Under the graph (which bottoms out at y=0.40), centered below the
+        # right half of the figure (x in [0.5, 1.0], so centered on x=0.75).
+        ax_logo = fig.add_axes([0.75 - logo_axes_w / 2, 0.315, logo_axes_w, logo_axes_h])
+        ax_logo.imshow(logo_img)
+        ax_logo.axis("off")
+    except OSError as e:
+        print(f"[warn] Could not load logo from {LOGO_PATH}: {e}")
 
     ax = fig.add_axes([0.10, 0.40, 0.85, 0.52])
     ax.set_xlabel("Elapsed time (s)")
@@ -350,6 +365,10 @@ def main():
 
     fig, ani = build_gui(config, initial_window=initial_window, initial_history=initial_history,
                           test_mode=args.test)
+    try:
+        fig.canvas.manager.full_screen_toggle()
+    except Exception as e:
+        print(f"[warn] Could not switch to full screen: {e}")
     try:
         plt.show()
     finally:
