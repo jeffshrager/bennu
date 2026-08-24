@@ -9,6 +9,7 @@
 # python axg.py                      # auto-detect port
 # python axg.py --port /dev/ttyUSB0
 # python axg.py --baud 115200
+# python axg.py --test                # no serial port; drive the signal by hand
 
 
 import argparse
@@ -37,6 +38,15 @@ WINDOW = 300  # samples kept in the buffer (upper bound for history display)
 DEFAULT_SMOOTH_WINDOW = 10  # running-mean window (samples) applied before plotting
 MAX_SMOOTH_WINDOW = 50
 DEFAULT_HISTORY = 100  # points shown on the plot at once
+
+YAXIS_HALF_RANGE = 1.0  # Y axis always spans center +/- this
+YAXIS_RECENTER_FRACTION = 0.8  # recenter once the value crosses this fraction of the half-range
+YAXIS_INIT_CENTER = 2.0
+
+TEST_SIGNAL_MIN = 0.0
+TEST_SIGNAL_MAX = 6.0
+TEST_SIGNAL_INIT = 2.0
+TEST_FEED_INTERVAL = 0.2  # seconds between simulated samples in --test mode
 
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "axg.json")
 CONFIG_DEFAULTS = {"smooth_window": DEFAULT_SMOOTH_WINDOW, "history": DEFAULT_HISTORY}
@@ -127,14 +137,16 @@ def _serial_reader(port, baud):
 # ---------------------------------------------------------------------------
 # GUI
 # ---------------------------------------------------------------------------
-def build_gui(config, initial_window=DEFAULT_SMOOTH_WINDOW, initial_history=DEFAULT_HISTORY):
+def build_gui(config, initial_window=DEFAULT_SMOOTH_WINDOW, initial_history=DEFAULT_HISTORY,
+              test_mode=False):
     fig = plt.figure(figsize=(10, 7.0))
     fig.canvas.manager.set_window_title("Axetris LGD - Live")
 
     ax = fig.add_axes([0.10, 0.40, 0.85, 0.52])
     ax.set_xlabel("Elapsed time (s)")
     ax.set_ylabel("Concentration")
-    ax.set_ylim(1, 3)
+    yaxis_state = {"center": YAXIS_INIT_CENTER}
+    ax.set_ylim(yaxis_state["center"] - YAXIS_HALF_RANGE, yaxis_state["center"] + YAXIS_HALF_RANGE)
     ax.grid(True, alpha=0.3)
 
     (line1,) = ax.plot([], [], color="steelblue", lw=1.5, label="gas1")
@@ -169,6 +181,32 @@ def build_gui(config, initial_window=DEFAULT_SMOOTH_WINDOW, initial_history=DEFA
 
     smooth_slider.on_changed(_on_smooth_change)
     hist_slider.on_changed(_on_hist_change)
+
+    # Test mode: an always-visible slider (not gated by the hide/show toggle)
+    # that lets you set the simulated gas1 signal by hand instead of reading
+    # from a serial port. A background thread feeds its current value into
+    # the shared buffers at a steady cadence so the rest of the pipeline
+    # (smoothing, history window, Y-axis recentering) behaves as it would
+    # with a real signal.
+    test_slider = None
+    if test_mode:
+        ax_test = fig.add_axes([0.10, 0.19, 0.18, 0.03])
+        test_slider = Slider(
+            ax_test, "TEST signal", TEST_SIGNAL_MIN, TEST_SIGNAL_MAX,
+            valinit=TEST_SIGNAL_INIT, valstep=0.01, color="tomato",
+        )
+        test_state = {"value": test_slider.val}
+        test_slider.on_changed(lambda val: test_state.__setitem__("value", float(val)))
+
+        def _test_feed():
+            while not _stop.is_set():
+                with _lock:
+                    _times.append(datetime.now())
+                    _gas1.append(test_state["value"])
+                    _gas2.append(float("nan"))
+                _stop.wait(TEST_FEED_INTERVAL)
+
+        threading.Thread(target=_test_feed, daemon=True).start()
 
     ax_reset = fig.add_axes([0.32, 0.05, 0.16, 0.05])
     reset_button = Button(ax_reset, "Reset defaults", color="whitesmoke", hovercolor="lightgray")
@@ -205,7 +243,7 @@ def build_gui(config, initial_window=DEFAULT_SMOOTH_WINDOW, initial_history=DEFA
     # Widgets must be kept alive by a strong reference for the life of the
     # figure, or matplotlib's callbacks silently stop firing once garbage
     # collected.
-    fig._widgets = (smooth_slider, hist_slider, reset_button, toggle_button)
+    fig._widgets = (smooth_slider, hist_slider, reset_button, toggle_button, test_slider)
 
     def _animate(_frame):
         with _lock:
@@ -233,6 +271,14 @@ def build_gui(config, initial_window=DEFAULT_SMOOTH_WINDOW, initial_history=DEFA
             line1.set_data(xs, g1_d)
             line2.set_data(xs, g2_d)
             ax.set_xlim(0, max(xs[-1], 1))
+
+            y_value = g1_d[-1]
+            if y_value == y_value:  # not NaN
+                center = yaxis_state["center"]
+                if abs(y_value - center) >= YAXIS_HALF_RANGE * YAXIS_RECENTER_FRACTION:
+                    center = round(y_value * 2) / 2
+                    yaxis_state["center"] = center
+                ax.set_ylim(center - YAXIS_HALF_RANGE, center + YAXIS_HALF_RANGE)
 
             latest = f"gas1={g1_d[-1]:.3f}"
             if g2_d[-1] == g2_d[-1]:  # not NaN
@@ -269,23 +315,30 @@ def main():
                      help="initial number of points shown on the plot "
                           f"(default: last saved value, or {DEFAULT_HISTORY}, max {WINDOW}); "
                           "adjustable live via the slider")
+    ap.add_argument("--test", action="store_true",
+                     help="Test mode: skip the serial port and expose an always-visible "
+                          "slider to set the simulated signal value by hand.")
     args = ap.parse_args()
 
-    try:
-        port = find_serial_port(args.port)
-    except Exception as e:
-        print(f"[error] {e}")
-        sys.exit(1)
-    print(f"[info] Using port {port} @ {args.baud} bps")
+    if args.test:
+        print("[info] Test mode: no serial port will be opened; use the TEST signal slider.")
+    else:
+        try:
+            port = find_serial_port(args.port)
+        except Exception as e:
+            print(f"[error] {e}")
+            sys.exit(1)
+        print(f"[info] Using port {port} @ {args.baud} bps")
+
+        reader = threading.Thread(target=_serial_reader, args=(port, args.baud), daemon=True)
+        reader.start()
 
     config = load_config()
     initial_window = args.window if args.window is not None else config["smooth_window"]
     initial_history = args.history if args.history is not None else config["history"]
 
-    reader = threading.Thread(target=_serial_reader, args=(port, args.baud), daemon=True)
-    reader.start()
-
-    fig, ani = build_gui(config, initial_window=initial_window, initial_history=initial_history)
+    fig, ani = build_gui(config, initial_window=initial_window, initial_history=initial_history,
+                          test_mode=args.test)
     try:
         plt.show()
     finally:

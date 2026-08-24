@@ -1,0 +1,52 @@
+Session: 20260824 session 14
+
+Starting state: Remora/axg.py already had (from commit b65683c "ui changes",
+made earlier the same day, prior session): the Lamp button/GPIO code removed,
+the smoothing/history sliders hidden by default behind a tiny corner toggle
+button, slider values persisted to Remora/axg.json (created with defaults
+smooth_window=10, history=100), and a "Reset defaults" button that restores
+both the sliders and axg.json to those defaults. That commit was already in
+place at the start of this session; git status showed axg.py clean at start.
+
+Work done this session:
+- Dynamic Y-axis centering/recentering on the live plot. The Y axis always
+  spans center +/- 1.0 (YAXIS_HALF_RANGE). The center snaps to the nearest
+  0.5 of the current displayed gas1 value, but only RE-centers once the
+  value crosses 80% of the half-range from the current center
+  (YAXIS_RECENTER_FRACTION = 0.8) - e.g. center 1.5 only recenters once the
+  reading passes 2.3 above or 0.7 below, giving hysteresis so the axis
+  doesn't jitter near the edges. Initial center is 2.0 (matches the old
+  fixed ylim(1,3)). Implemented as state captured in the _animate closure,
+  recomputed each frame from g1_d[-1].
+  - Verified with a standalone simulation of the recenter logic against the
+    exact examples given (1.5 center, 2.3/0.7 thresholds) and end-to-end by
+    calling the real _animate function headlessly (matplotlib Agg backend,
+    conda env "test") with synthetic buffered samples, confirming ylim held
+    at (1,3) until the value passed 2.8 then jumped to (2,4) and held.
+- Added --test mode (argparse store_true flag). When passed:
+  - Skips find_serial_port/serial port opening entirely and does not start
+    the real _serial_reader thread - no hardware needed.
+  - build_gui() gains a test_mode parameter; when true it adds an
+    always-visible "TEST signal" slider (tomato-colored, range 0-6,
+    step 0.01, initial 2.0) in the lower-left, independent of the
+    hide/show controls toggle (it is NOT gated by controls_state, per the
+    request that it always be present in test mode).
+  - A daemon background thread (_test_feed, started from within build_gui
+    since it owns the slider) pushes the slider's current value into the
+    shared _times/_gas1/_gas2 buffers every 0.2s (TEST_FEED_INTERVAL),
+    standing in for the serial reader so smoothing, history windowing, and
+    Y-axis recentering all exercise normally against a hand-set signal.
+  - Verified headlessly: slider stays visible through hide/show toggle
+    clicks, background thread feeds its value into the buffer continuously,
+    and moving the slider changes subsequent buffered samples immediately.
+
+Files changed:
+  Remora/axg.py (modified - Y-axis recentering + --test mode; not yet
+  committed as of end of session)
+
+Next steps (not done this session):
+  - Commit this session's axg.py changes (Y-axis recentering, --test mode).
+  - Still not verified on the actual Raspberry Pi with the real Axetris
+    device attached (carried over from session 13's next steps).
+  - Consider whether the TEST signal slider's range (0-6) and step (0.01)
+    are the right defaults once tried by hand against real-looking data.
