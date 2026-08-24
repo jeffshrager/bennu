@@ -4,9 +4,7 @@
 # pip install pyserial matplotlib
 
 
-# GUI version of ax.py: live scrolling plot of Axetris readings, plus a
-# "Lamp" button (black = off, blue = on) that drives GPIO pin 5 (BCM)
-# high for as long as the lamp is on.
+# GUI version of ax.py: live scrolling plot of Axetris readings.
 #
 # python axg.py                      # auto-detect port
 # python axg.py --port /dev/ttyUSB0
@@ -14,6 +12,8 @@
 
 
 import argparse
+import json
+import os
 import sys
 import threading
 from collections import deque
@@ -33,19 +33,28 @@ from ax import (
 )
 
 
-LAMP_PIN = 5  # BCM numbering
 WINDOW = 300  # samples kept in the buffer (upper bound for history display)
 DEFAULT_SMOOTH_WINDOW = 10  # running-mean window (samples) applied before plotting
 MAX_SMOOTH_WINDOW = 50
 DEFAULT_HISTORY = 100  # points shown on the plot at once
 
+CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "axg.json")
+CONFIG_DEFAULTS = {"smooth_window": DEFAULT_SMOOTH_WINDOW, "history": DEFAULT_HISTORY}
 
-try:
-    import RPi.GPIO as GPIO
-    HAVE_GPIO = True
-except ImportError:
-    GPIO = None
-    HAVE_GPIO = False
+
+def load_config():
+    try:
+        with open(CONFIG_PATH) as f:
+            cfg = json.load(f)
+        return {**CONFIG_DEFAULTS, **cfg}
+    except (OSError, ValueError):
+        save_config(CONFIG_DEFAULTS)
+        return dict(CONFIG_DEFAULTS)
+
+
+def save_config(cfg):
+    with open(CONFIG_PATH, "w") as f:
+        json.dump(cfg, f, indent=2)
 
 
 def rolling_mean(values, window):
@@ -59,25 +68,6 @@ def rolling_mean(values, window):
             buf.append(v)
         out.append(sum(buf) / len(buf) if buf else float("nan"))
     return out
-
-
-def setup_lamp_gpio():
-    if not HAVE_GPIO:
-        print("[warn] RPi.GPIO not available; Lamp button will only update the UI.")
-        return
-    GPIO.setmode(GPIO.BCM)
-    GPIO.setup(LAMP_PIN, GPIO.OUT, initial=GPIO.LOW)
-
-
-def set_lamp(on):
-    if HAVE_GPIO:
-        GPIO.output(LAMP_PIN, GPIO.HIGH if on else GPIO.LOW)
-
-
-def cleanup_lamp_gpio():
-    if HAVE_GPIO:
-        GPIO.output(LAMP_PIN, GPIO.LOW)
-        GPIO.cleanup(LAMP_PIN)
 
 
 # ---------------------------------------------------------------------------
@@ -137,7 +127,7 @@ def _serial_reader(port, baud):
 # ---------------------------------------------------------------------------
 # GUI
 # ---------------------------------------------------------------------------
-def build_gui(initial_window=DEFAULT_SMOOTH_WINDOW, initial_history=DEFAULT_HISTORY):
+def build_gui(config, initial_window=DEFAULT_SMOOTH_WINDOW, initial_history=DEFAULT_HISTORY):
     fig = plt.figure(figsize=(10, 7.0))
     fig.canvas.manager.set_window_title("Axetris LGD - Live")
 
@@ -159,7 +149,6 @@ def build_gui(initial_window=DEFAULT_SMOOTH_WINDOW, initial_history=DEFAULT_HIST
         ax_smooth, "smoothing (samples)", 1, MAX_SMOOTH_WINDOW,
         valinit=initial_window, valstep=1,
     )
-    smooth_slider.on_changed(lambda val: smooth_state.__setitem__("window", int(val)))
 
     history_state = {"points": initial_history}
     ax_hist = fig.add_axes([0.32, 0.13, 0.53, 0.03])
@@ -167,34 +156,56 @@ def build_gui(initial_window=DEFAULT_SMOOTH_WINDOW, initial_history=DEFAULT_HIST
         ax_hist, "history (points)", 5, WINDOW,
         valinit=initial_history, valstep=5,
     )
-    hist_slider.on_changed(lambda val: history_state.__setitem__("points", int(val)))
 
-    lamp_state = {"on": False}
-    ax_lamp = fig.add_axes([0.40, 0.03, 0.20, 0.09])
-    lamp_button = Button(ax_lamp, "Lamp", color="black", hovercolor="dimgray")
-    lamp_button.label.set_color("white")
-    lamp_button.label.set_fontweight("bold")
+    def _on_smooth_change(val):
+        smooth_state["window"] = int(val)
+        config["smooth_window"] = int(val)
+        save_config(config)
+
+    def _on_hist_change(val):
+        history_state["points"] = int(val)
+        config["history"] = int(val)
+        save_config(config)
+
+    smooth_slider.on_changed(_on_smooth_change)
+    hist_slider.on_changed(_on_hist_change)
+
+    ax_reset = fig.add_axes([0.32, 0.05, 0.16, 0.05])
+    reset_button = Button(ax_reset, "Reset defaults", color="whitesmoke", hovercolor="lightgray")
+
+    def _on_reset_click(_event):
+        save_config(dict(CONFIG_DEFAULTS))
+        smooth_slider.set_val(CONFIG_DEFAULTS["smooth_window"])
+        hist_slider.set_val(CONFIG_DEFAULTS["history"])
+
+    reset_button.on_clicked(_on_reset_click)
+
+    # Tiny, low-contrast toggle tucked in the lower-right corner. Clicking it
+    # shows/hides the sliders and reset button.
+    controls_state = {"visible": False}
+    ax_toggle = fig.add_axes([0.965, 0.012, 0.025, 0.02])
+    toggle_button = Button(ax_toggle, "", color="white", hovercolor="lightgray")
+    for spine in ax_toggle.spines.values():
+        spine.set_visible(False)
+
+    def _apply_controls_visibility():
+        visible = controls_state["visible"]
+        ax_smooth.set_visible(visible)
+        ax_hist.set_visible(visible)
+        ax_reset.set_visible(visible)
+        fig.canvas.draw_idle()
+
+    def _on_toggle_click(_event):
+        controls_state["visible"] = not controls_state["visible"]
+        _apply_controls_visibility()
+
+    toggle_button.on_clicked(_on_toggle_click)
+    _apply_controls_visibility()
 
     # Widgets must be kept alive by a strong reference for the life of the
     # figure, or matplotlib's callbacks silently stop firing once garbage
-    # collected (this is what broke the Lamp button previously).
-    fig._widgets = (smooth_slider, hist_slider, lamp_button)
-
-    def _paint_lamp():
-        if lamp_state["on"]:
-            lamp_button.color, lamp_button.hovercolor = "blue", "royalblue"
-        else:
-            lamp_button.color, lamp_button.hovercolor = "black", "dimgray"
-        lamp_button.ax.set_facecolor(lamp_button.color)
-        fig.canvas.draw_idle()
-
-    def _on_lamp_click(_event):
-        lamp_state["on"] = not lamp_state["on"]
-        set_lamp(lamp_state["on"])
-        _paint_lamp()
-
-    lamp_button.on_clicked(_on_lamp_click)
-    _paint_lamp()
+    # collected.
+    fig._widgets = (smooth_slider, hist_slider, reset_button, toggle_button)
 
     def _animate(_frame):
         with _lock:
@@ -247,15 +258,17 @@ def build_gui(initial_window=DEFAULT_SMOOTH_WINDOW, initial_history=DEFAULT_HIST
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Axetris LGD-Compact reader with live GUI + lamp control.")
+    ap = argparse.ArgumentParser(description="Axetris LGD-Compact reader with live GUI.")
     ap.add_argument("--port", help="Serial port (e.g., /dev/ttyUSB0). Auto-detect if omitted.")
     ap.add_argument("--baud", type=int, default=DEFAULT_BAUD, help="Baud rate (default 9600).")
-    ap.add_argument("--window", type=int, default=DEFAULT_SMOOTH_WINDOW,
-                     help=f"initial running-mean smoothing window, in samples "
-                          f"(default {DEFAULT_SMOOTH_WINDOW}); adjustable live via the slider")
-    ap.add_argument("--history", type=int, default=DEFAULT_HISTORY,
-                     help=f"initial number of points shown on the plot "
-                          f"(default {DEFAULT_HISTORY}, max {WINDOW}); adjustable live via the slider")
+    ap.add_argument("--window", type=int, default=None,
+                     help="initial running-mean smoothing window, in samples "
+                          "(default: last saved value, or "
+                          f"{DEFAULT_SMOOTH_WINDOW}); adjustable live via the slider")
+    ap.add_argument("--history", type=int, default=None,
+                     help="initial number of points shown on the plot "
+                          f"(default: last saved value, or {DEFAULT_HISTORY}, max {WINDOW}); "
+                          "adjustable live via the slider")
     args = ap.parse_args()
 
     try:
@@ -265,18 +278,18 @@ def main():
         sys.exit(1)
     print(f"[info] Using port {port} @ {args.baud} bps")
 
-    setup_lamp_gpio()
+    config = load_config()
+    initial_window = args.window if args.window is not None else config["smooth_window"]
+    initial_history = args.history if args.history is not None else config["history"]
 
     reader = threading.Thread(target=_serial_reader, args=(port, args.baud), daemon=True)
     reader.start()
 
-    fig, ani = build_gui(initial_window=args.window, initial_history=args.history)
+    fig, ani = build_gui(config, initial_window=initial_window, initial_history=initial_history)
     try:
         plt.show()
     finally:
         _stop.set()
-        set_lamp(False)
-        cleanup_lamp_gpio()
 
 
 if __name__ == "__main__":
