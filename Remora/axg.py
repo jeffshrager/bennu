@@ -219,12 +219,19 @@ def build_gui(config, initial_window=DEFAULT_SMOOTH_WINDOW, initial_history=DEFA
     reset_button.on_clicked(_on_reset_click)
 
     # Tiny, low-contrast toggle tucked in the lower-right corner. Clicking it
-    # shows/hides the sliders and reset button.
+    # shows/hides the sliders and reset button. Faint fill + border + glyph
+    # so it's findable on close inspection without standing out at a glance
+    # (pure white on white, with no border, was invisible even when looked
+    # for directly).
     controls_state = {"visible": False}
-    ax_toggle = fig.add_axes([0.965, 0.012, 0.025, 0.02])
-    toggle_button = Button(ax_toggle, "", color="white", hovercolor="lightgray")
+    ax_toggle = fig.add_axes([0.955, 0.010, 0.035, 0.025])
+    toggle_button = Button(ax_toggle, "⋮", color="#f0f0f0", hovercolor="#c0c0c0")
+    toggle_button.label.set_color("#b0b0b0")
+    toggle_button.label.set_fontsize(9)
     for spine in ax_toggle.spines.values():
-        spine.set_visible(False)
+        spine.set_visible(True)
+        spine.set_color("#d8d8d8")
+        spine.set_linewidth(0.6)
 
     def _apply_controls_visibility():
         visible = controls_state["visible"]
