@@ -149,14 +149,14 @@ def build_gui(config, initial_window=DEFAULT_SMOOTH_WINDOW, initial_history=DEFA
     try:
         logo_img = plt.imread(LOGO_PATH)
         logo_h, logo_w = logo_img.shape[0], logo_img.shape[1]
-        logo_axes_w = 0.14 * 1.25
+        logo_axes_w = 0.14 * 1.25 * 2
         logo_axes_h = logo_axes_w * (logo_h / logo_w) * (fig.get_figwidth() / fig.get_figheight())
         # Under the graph, centered on it (graph spans x=[0.10, 0.95], so
-        # centered on x=0.525). Anchored just below the graph's bottom
-        # (y=0.40) and allowed to extend down over the (normally hidden)
-        # sliders at this larger size.
+        # centered on x=0.525). Anchored below the graph's bottom (y=0.40),
+        # nudged down ~0.25in further, and allowed to extend down over the
+        # (normally hidden) sliders at this larger size.
         graph_center_x = 0.10 + 0.85 / 2
-        logo_top = 0.34  # below the "Elapsed time (s)" x-axis label
+        logo_top = 0.34 - 0.25 / fig.get_figheight()
         ax_logo = fig.add_axes(
             [graph_center_x - logo_axes_w / 2, logo_top - logo_axes_h, logo_axes_w, logo_axes_h]
         )
@@ -166,7 +166,6 @@ def build_gui(config, initial_window=DEFAULT_SMOOTH_WINDOW, initial_history=DEFA
         print(f"[warn] Could not load logo from {LOGO_PATH}: {e}")
 
     ax = fig.add_axes([0.10, 0.40, 0.85, 0.52])
-    ax.set_xlabel("Elapsed time (s)")
     ax.set_ylabel("Concentration")
     yaxis_state = {"center": YAXIS_INIT_CENTER}
     ax.set_ylim(yaxis_state["center"] - YAXIS_HALF_RANGE, yaxis_state["center"] + YAXIS_HALF_RANGE)
