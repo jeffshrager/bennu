@@ -151,14 +151,16 @@ def build_gui(config, initial_window=DEFAULT_SMOOTH_WINDOW, initial_history=DEFA
         logo_h, logo_w = logo_img.shape[0], logo_img.shape[1]
         logo_axes_w = 0.14 * 1.25 * 2
         logo_axes_h = logo_axes_w * (logo_h / logo_w) * (fig.get_figwidth() / fig.get_figheight())
-        # Under the graph, centered on it (graph spans x=[0.10, 0.95], so
-        # centered on x=0.525). Anchored below the graph's bottom (y=0.40),
-        # nudged down ~0.25in further, and allowed to extend down over the
+        # Under the graph, centered on its right half (graph spans
+        # x=[0.10, 0.95], so right half is [0.525, 0.95], centered on
+        # x=0.7375). Anchored below the graph's bottom (y=0.40), nudged
+        # down ~0.25in further, and allowed to extend down over the
         # (normally hidden) sliders at this larger size.
-        graph_center_x = 0.10 + 0.85 / 2
+        graph_right_half_center_x = 0.525 + (0.95 - 0.525) / 2
         logo_top = 0.34 - 0.25 / fig.get_figheight()
         ax_logo = fig.add_axes(
-            [graph_center_x - logo_axes_w / 2, logo_top - logo_axes_h, logo_axes_w, logo_axes_h]
+            [graph_right_half_center_x - logo_axes_w / 2, logo_top - logo_axes_h,
+             logo_axes_w, logo_axes_h]
         )
         ax_logo.imshow(logo_img)
         ax_logo.axis("off")
