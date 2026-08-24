@@ -15,6 +15,7 @@
 import argparse
 import json
 import os
+import random
 import sys
 import threading
 from collections import deque
@@ -47,6 +48,7 @@ TEST_SIGNAL_MIN = 0.0
 TEST_SIGNAL_MAX = 6.0
 TEST_SIGNAL_INIT = 2.0
 TEST_FEED_INTERVAL = 0.2  # seconds between simulated samples in --test mode
+TEST_NOISE_FRACTION = 0.05  # +/- 5% random noise applied to the TEST signal
 
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "axg.json")
 CONFIG_DEFAULTS = {"smooth_window": DEFAULT_SMOOTH_WINDOW, "history": DEFAULT_HISTORY}
@@ -200,9 +202,11 @@ def build_gui(config, initial_window=DEFAULT_SMOOTH_WINDOW, initial_history=DEFA
 
         def _test_feed():
             while not _stop.is_set():
+                base = test_state["value"]
+                noisy = base + random.uniform(-1.0, 1.0) * TEST_NOISE_FRACTION * base
                 with _lock:
                     _times.append(datetime.now())
-                    _gas1.append(test_state["value"])
+                    _gas1.append(noisy)
                     _gas2.append(float("nan"))
                 _stop.wait(TEST_FEED_INTERVAL)
 
