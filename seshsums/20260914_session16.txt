@@ -1,0 +1,51 @@
+Session: 20260914 session 16
+
+Starting state: repo clean on main, up to date with origin/main
+(db36b14) at session start.
+
+Work done this session:
+- Investigated why "the ship-tracker automated thing doesn't work":
+  shiptrack/ais_cache_daemon.py and ship_position.py fail immediately in
+  the "test" conda env (ModuleNotFoundError: websockets not installed
+  there), there's no cache/ dir (never successfully written), and no
+  cron/launchd entry exists to run it automatically. User clarified this
+  AIS/websocket path isn't today's goal - they read ship positions off a
+  UI by hand and just want a fast way to log them, no conda env
+  involved ("I generally just use no env").
+- Built shipat: a manual ship-position logger.
+  - shiptrack/shipat_record.py: stdlib-only (argparse-free, just sys/
+    datetime) helper. Takes ship, lat, lon as argv; validates lat in
+    [-90,90] and lon in [-180,180]; reuses local_time.py's
+    utc_offset_hours() (round(lon/15), clamped [-12,14]) rather than
+    duplicating that logic. Prints one TSV row: ship, lat, lon, current
+    UTC time (full date+time, "reported"), and ship local time (full
+    date+time + UTC offset, same instant + offset).
+  - shiptrack/shipat: bash script, `./shipat <ship> <lat> <lon>`.
+    Resolves its own directory so it works regardless of caller's cwd.
+    Creates shiptrack/ship-tracks.tsv with a header row if absent,
+    appends the record via shipat_record.py, then tails the last 10
+    lines of the file to stdout so the user sees the update in context.
+    Made executable (chmod +x on both files).
+  - Deliberately does NOT look up the ship name/MMSI in ships.json -
+    ship is used exactly as given on the command line. Noted as a
+    possible future step once arbitrary-ship lookup via the AIS API is
+    sorted out.
+  - Verified with `env -i` (no conda, plain system python3) that two
+    successive calls correctly create-then-append to
+    shiptrack/ship-tracks.tsv and each triggers a correct tail. Test
+    rows (ship "RT" and "DISNEY DREAM" with made-up coordinates) were
+    deleted afterward so no fabricated data would be committed - the
+    real ship-tracks.tsv gets created fresh on the user's first real
+    ./shipat call.
+
+Files changed:
+  shiptrack/shipat (new, executable)
+  shiptrack/shipat_record.py (new, executable)
+
+Results:
+- Committed as ac8743d "Add shipat: manual ship-position logger for
+  shiptrack". Not yet pushed to origin - confirm before pushing.
+
+Next steps: none outstanding for shipat. AIS websocket daemon
+(ais_cache_daemon.py / ship_position.py) remains broken/unscheduled but
+is explicitly out of scope for now per user.
