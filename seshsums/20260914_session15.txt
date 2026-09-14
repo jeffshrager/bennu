@@ -1,0 +1,28 @@
+Session: 20260914 session 15
+
+Starting state: repo clean on main, up to date with origin/main
+(a8fccd8) at session start.
+
+Work done this session:
+- Created shiptrack/local_time.py: converts a lat/long position to local
+  time at that location. Takes lat and lon as two decimal-degree CLI args
+  and prints local time in 24-hour format (HH:MM:SS) plus the UTC offset
+  used, e.g. `python local_time.py 45.0 -91.9` -> "10:39:19 (UTC-6)".
+  Per explicit instruction, uses the simple nautical convention (UTC
+  offset = round(longitude / 15), clamped to [-12, 14]) rather than a real
+  time zone database - no DST, no regional exceptions (Arizona, etc.).
+  Validates lat in [-90,90] and lon in [-180,180], raising ValueError
+  otherwise.
+  - Verified with conda env "test": San Francisco (37.7749, -122.4194) ->
+    UTC-8, London (51.5, 0.1) -> UTC+0, and (45.0, -91.9) -> UTC-6. Also
+    confirmed an out-of-range latitude (-91.9 passed as lat) correctly
+    raises a ValueError.
+
+Files changed:
+  shiptrack/local_time.py (new file)
+
+Results:
+- Committed as 4a54011 "Add lat/long to local time converter in shiptrack"
+  and pushed to origin/main.
+
+Next steps: none outstanding.
