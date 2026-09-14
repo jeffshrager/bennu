@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Record a manually-read ship position and its local time to ship-tracks.tsv.
+#
+# Usage: ./shipat <ship> <lat> <lon>
+#   ./shipat "RT" 27.3 -91.9
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TSV="$SCRIPT_DIR/ship-tracks.tsv"
+
+if [ "$#" -ne 3 ]; then
+    echo "Usage: $0 <ship> <lat> <lon>" >&2
+    exit 1
+fi
+
+if [ ! -f "$TSV" ]; then
+    printf 'ship\tlat\tlon\treported\tship_local_time\n' > "$TSV"
+fi
+
+python3 "$SCRIPT_DIR/shipat_record.py" "$1" "$2" "$3" >> "$TSV"
+
+echo "Recorded. Last entries in $TSV:" >&2
+tail -n 10 "$TSV"
