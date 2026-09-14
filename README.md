@@ -1,4 +1,4 @@
-#Updated by Jeff on 20260503
+#Updated by Jeff on 20260914
 
 ************************************************
 *** IMPORTANT NOTES:
@@ -6,6 +6,74 @@
 Chronjob reboot now at 6pm (I think it's on PDT)
 MAKE SURE YOU COPY A NEW RUN.SH WITH IMPROVED LOGGING NOTES NEXT TIME YOU RUN!
 ************************************************
+
+# Update ship-tracking db and push it
+cd ~/Desktop/bluedot/remora_repo/shiptrack
+# Use: https://www.marinetraffic.com/en/ais/details/ships/shipid:5261520
+to locate ship (need to read it off the legend down/right on the map view)
+# make a ship tracking record:
+./shipat rt [lat] [long]
+# Sourcetree save so that the db gets saved
+
+# Clean up from previous experiment:
+
+Connect to LampRay:
+
+ssh bennu@64.13.145.93
+ssh localhost -p 21965
+cd software/bennu
+cd experiments
+ls -ltr  # find latest
+
+# Back on local machine either create or update local results:
+
+cd local::.../experiments/[myexperiment]    # or create it: mkdir ...
+scp "rome:/home/bennu/software/bennu/experiments/[myexperiment]/" .
+or:
+cp "rome:/home/bennu/software/bennu/*.log*"
+local::.../experiments/[myexperiment]
+
+# Kill the remote and reboot to shut off lamps:
+
+ssh bennu@64.13.145.93
+ssh localhost -p 21965
+cd software/bennu
+cat lamp.config               # Make sure the default is all off
+cp lamp_all_off.config lamp.config
+sudo reboot now
+
+# Setup a new experiment
+
+ssh bennu@64.13.145.93
+ssh localhost -p 21965
+cd software/bennu/experiments
+cp -R [latest experiment] [new experiment]
+cd [new]
+rm out.log
+emacs -nw run.sh
+
+# Fix for current experiment
+
+rm ../../lamp_controller.log*   #<<<<<<<<<<<< CAREFULL!
+
+# START IT!
+
+nohup bash run.sh > out.log 2>&1 &
+
+# Make sure it's running:
+
+tail -f ../../lamp_controller.log
+tail -f out.log # This is the run.sh log
+
+To stop:
+
+ssh bennu@64.13.145.93
+ssh localhost -p 21965
+cd software/bennu
+cp lamp_all_off.config lamp.config
+sudo reboot now
+
+===========================================================
 
 Overview of the process:
 
