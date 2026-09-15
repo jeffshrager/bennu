@@ -293,6 +293,22 @@ def per_cycle_effects(cycles: list[Cycle]) -> pd.DataFrame:
 def group_tests(df: pd.DataFrame) -> dict:
     on  = df.loc[df["lamp"] == 1, "methane_corr"].values
     off = df.loc[df["lamp"] == 0, "methane_corr"].values
+    if len(on) == 0 or len(off) == 0:
+        # Lamp state never changed (e.g. a busted current sensor stuck at a
+        # single reading, so everything is classified ON or everything
+        # OFF) -- there is no ON/OFF contrast to test.
+        return {
+            "n_on": len(on), "n_off": len(off),
+            "mean_on": float(on.mean()) if len(on) else np.nan,
+            "mean_off": float(off.mean()) if len(off) else np.nan,
+            "median_on": float(np.median(on)) if len(on) else np.nan,
+            "median_off": float(np.median(off)) if len(off) else np.nan,
+            "std_on": float(on.std(ddof=1)) if len(on) > 1 else np.nan,
+            "std_off": float(off.std(ddof=1)) if len(off) > 1 else np.nan,
+            "diff": np.nan,
+            "welch_t": np.nan, "welch_p": np.nan,
+            "mannwhitney_U": np.nan, "mannwhitney_p": np.nan,
+        }
     t_stat, t_p = stats.ttest_ind(on, off, equal_var=False)
     u_stat, u_p = stats.mannwhitneyu(on, off, alternative="two-sided")
     return {
@@ -325,17 +341,33 @@ def paired_cycle_test(effects: pd.DataFrame) -> dict:
     }
 
 
+def _safe_corr(x, y, func) -> tuple[float, float]:
+    """
+    Run a scipy correlation function (pearsonr/spearmanr), returning NaNs
+    instead of raising/warning when a busted sensor holds one side constant
+    (e.g. all-zero or all-identical readings), which makes the correlation
+    undefined.
+    """
+    x = np.asarray(x, dtype=float); y = np.asarray(y, dtype=float)
+    if len(x) < 2 or np.ptp(x) == 0 or np.ptp(y) == 0:
+        return np.nan, np.nan
+    return func(x, y)
+
+
 def windspeed_analysis(df: pd.DataFrame, effects: pd.DataFrame) -> dict:
     out = {}
-    r_all, p_all = stats.pearsonr(df["windspeed"], df["methane_corr"])
-    rs_all, ps_all = stats.spearmanr(df["windspeed"], df["methane_corr"])
+    r_all, p_all = _safe_corr(df["windspeed"], df["methane_corr"], stats.pearsonr)
+    rs_all, ps_all = _safe_corr(df["windspeed"], df["methane_corr"], stats.spearmanr)
     out["sample_pearson_r"]  = r_all; out["sample_pearson_p"]  = p_all
     out["sample_spearman_r"] = rs_all; out["sample_spearman_p"] = ps_all
     if len(effects) >= 3:
-        r_e, p_e = stats.pearsonr(effects["mean_windspeed"], effects["effect"])
-        rs_e, ps_e = stats.spearmanr(effects["mean_windspeed"], effects["effect"])
-        slope, intercept, _, p_val, stderr = stats.linregress(
-            effects["mean_windspeed"], effects["effect"])
+        r_e, p_e = _safe_corr(effects["mean_windspeed"], effects["effect"], stats.pearsonr)
+        rs_e, ps_e = _safe_corr(effects["mean_windspeed"], effects["effect"], stats.spearmanr)
+        if np.ptp(effects["mean_windspeed"].values) == 0:
+            slope, intercept, p_val, stderr = np.nan, np.nan, np.nan, np.nan
+        else:
+            slope, intercept, _, p_val, stderr = stats.linregress(
+                effects["mean_windspeed"], effects["effect"])
         out.update({
             "effect_pearson_r": r_e, "effect_pearson_p": p_e,
             "effect_spearman_r": rs_e, "effect_spearman_p": ps_e,
@@ -358,13 +390,21 @@ def multi_regression(df: pd.DataFrame) -> dict:
     n, p = X.shape
     dof = n - p
     sigma2 = (resid @ resid) / dof
-    cov = sigma2 * np.linalg.inv(X.T @ X)
-    se = np.sqrt(np.diag(cov))
-    tvals = beta / se
-    pvals = 2 * (1 - stats.t.cdf(np.abs(tvals), dof))
+    try:
+        cov = sigma2 * np.linalg.inv(X.T @ X)
+        se = np.sqrt(np.diag(cov))
+    except np.linalg.LinAlgError:
+        # Design matrix is rank-deficient -- e.g. a busted sensor holds
+        # lamp state or windspeed constant, making a column collinear with
+        # the intercept. lstsq above still gives a (minimum-norm) fit, but
+        # standard errors/t-tests on the coefficients are undefined.
+        se = np.full(p, np.nan)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        tvals = beta / se
+        pvals = 2 * (1 - stats.t.cdf(np.abs(tvals), dof))
     ss_tot = ((y - y.mean()) ** 2).sum()
     ss_res = (resid ** 2).sum()
-    r2 = 1 - ss_res / ss_tot
+    r2 = 1 - ss_res / ss_tot if ss_tot > 0 else np.nan
     return {
         "r2": r2, "n": n, "dof": dof,
         "coef": dict(zip(names, beta)),

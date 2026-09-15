@@ -1,0 +1,57 @@
+Session: 20260914 session 17
+
+Starting state: main at 14a47a1, working tree had a pre-existing
+uncommitted modification to shiptrack/ship-tracks.tsv (not touched this
+session).
+
+Work done this session:
+- User reported Remora/lamp_analysis.py dies when sensors are busted and
+  report all-zero or constant readings, because "the regression can't be
+  performed." Reproduced the actual crash points with a scipy/numpy probe
+  (conda env "test", scipy 1.7.3) rather than guessing:
+    - stats.mannwhitneyu raises ValueError("`x` and `y` must be of
+      nonzero size") when the current sensor is stuck at one value, so
+      lamp state never flips and one of the ON/OFF groups in
+      group_tests() is empty.
+    - np.linalg.inv raises LinAlgError("Singular matrix") in
+      multi_regression() when windspeed or lamp state is constant, making
+      a design-matrix column collinear with the intercept.
+    - pearsonr/spearmanr/linregress on constant input only warn and
+      return NaN in this scipy version - not an actual crash, but
+      hardened anyway since future scipy could turn those into
+      exceptions.
+- Fixes in Remora/lamp_analysis.py:
+    - group_tests(): early-return an all-NaN stats dict when either the
+      ON or OFF sample group is empty, instead of calling
+      ttest_ind/mannwhitneyu on an empty array.
+    - multi_regression(): wrapped the np.linalg.inv(X.T @ X) call in
+      try/except LinAlgError, falling back to NaN standard errors/t/p
+      (the lstsq coefficient fit itself is unaffected - lstsq already
+      tolerates rank-deficient X). Also guards r2 against a
+      constant-methane 0/0 case.
+    - Added _safe_corr() helper used by windspeed_analysis() to short-
+      circuit pearsonr/spearmanr/linregress to NaN when either input
+      array has zero variance (ptp == 0), covering busted-windspeed and
+      busted-methane cases proactively.
+  fmt_p() and build_pdf()'s Python format() calls already render NaN as
+  "nan"/"n/a" fine, so no PDF-building changes were needed - the report
+  just shows the degenerate stats as undefined rather than crashing.
+- Verified: (a) built a synthetic log with current=0 and windspeed=0
+  throughout (fully busted sensors) - full pipeline (including PDF
+  generation, needed installing reportlab into conda env "test") now
+  completes instead of raising; (b) built a synthetic healthy log and
+  confirmed real (non-NaN) statistics are still produced there,
+  confirming the guards don't fire on the normal path; (c) directly
+  exercised group_tests()/multi_regression()/windspeed_analysis() in
+  isolation on stuck-current-only and stuck-windspeed-only variants of
+  the healthy log to confirm each previously-fatal path now degrades to
+  NaN cleanly. All temp test files/logs removed after verification.
+
+Files changed:
+  Remora/lamp_analysis.py (modified - not yet committed)
+
+Results: Not committed - user did not ask for a commit this session.
+
+Next steps: none outstanding for this fix. The pre-existing uncommitted
+shiptrack/ship-tracks.tsv change from before this session is still
+sitting in the working tree, untouched.
