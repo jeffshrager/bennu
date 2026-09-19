@@ -23,7 +23,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from matplotlib.patches import Patch
 
-from lamp_analysis import extract_logs, prepare
+from lamp_analysis import extract_logs, prepare, segment_cycles
 
 ON_COLOR, OFF_COLOR = "#FFF3A0", "#B8DDF5"
 
@@ -45,6 +45,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("tarball", help="a .tar.gz containing the log files")
     ap.add_argument("--jump-k", type=float, default=8.0)
+    ap.add_argument("--long-factor", type=float, default=3.0,
+                    help="stretches longer than this x the median cycle are hatched "
+                         "(same rule as lamp_analysis.py variant B)")
     args = ap.parse_args()
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -64,13 +67,25 @@ def main():
         a.fill_between(tn, 0, 1, where=~lamp, step="post", transform=trans,
                        facecolor=OFF_COLOR, alpha=0.85, zorder=0, lw=0)
 
+    # Hatch the long stretches whose lamp state is only inferred (see
+    # lamp_analysis.py: excluded in variant B).
+    cycles = segment_cycles(df)
+    lim = args.long_factor * float(np.median([c.n for c in cycles]))
+    for c in cycles:
+        if c.n > lim:
+            for a in (ax, axw):
+                a.axvspan(tn[c.start], tn[c.end - 1], facecolor="none",
+                          edgecolor="gray", hatch="//", alpha=0.6, zorder=1)
+
     ax.plot(x, methane, color="black", lw=0.7, zorder=3)
     ax.axhline(np.nanmean(methane), color="red", ls="--", lw=1, zorder=4)
     ax.set_ylabel("Methane (ppm)")
     ax.set_title(f"{os.path.basename(args.tarball)} — methane, lamp ON (yellow) vs OFF (blue)")
     ax.legend(handles=[Patch(facecolor=ON_COLOR, edgecolor="k", label="ON"),
                        Patch(facecolor=OFF_COLOR, edgecolor="k", label="OFF"),
-                       plt.Line2D([0], [0], color="red", ls="--", label="overall mean")],
+                       plt.Line2D([0], [0], color="red", ls="--", label="overall mean"),
+                       Patch(facecolor="none", edgecolor="gray", hatch="//",
+                             label="long stretch (state unverified)")],
               loc="upper left", framealpha=0.9)
 
     axw.plot(x, wind, color="#4E8C6E", lw=0.7, zorder=3)

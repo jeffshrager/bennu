@@ -261,11 +261,16 @@ class Cycle:
     mean_methane: float
     mean_windspeed: float
     n: int
+    o_start: int = 0  # position in the full (unfiltered) sample sequence, inclusive
+    o_end: int = 0    # inclusive
 
 
 def segment_cycles(df: pd.DataFrame) -> list[Cycle]:
     state = df["lamp"].values
-    change = np.flatnonzero(np.diff(state) != 0) + 1
+    orig = df["orig"].values if "orig" in df else np.arange(len(df))
+    # A new cycle starts at a lamp-state change, or where samples were
+    # removed (long-cycle exclusion) so a gap is never bridged.
+    change = np.flatnonzero((np.diff(state) != 0) | (np.diff(orig) != 1)) + 1
     edges = np.r_[0, change, len(state)]
     cycles = []
     for k in range(len(edges) - 1):
@@ -277,6 +282,7 @@ def segment_cycles(df: pd.DataFrame) -> list[Cycle]:
             mean_methane=float(df["methane_corr"].iloc[a:b].mean()),
             mean_windspeed=float(df["windspeed"].iloc[a:b].mean()),
             n=int(b - a),
+            o_start=int(orig[a]), o_end=int(orig[b - 1]),
         ))
     return cycles
 
@@ -296,6 +302,7 @@ def per_cycle_effects(cycles: list[Cycle]) -> pd.DataFrame:
         if c.state != 1: continue
         prev_c, next_c = cycles[i - 1], cycles[i + 1]
         if prev_c.state != 0 or next_c.state != 0: continue
+        if prev_c.o_end + 1 != c.o_start or c.o_end + 1 != next_c.o_start: continue
         baseline = 0.5 * (prev_c.mean_methane + next_c.mean_methane)
         rows.append({
             "cycle": c.idx,
@@ -439,9 +446,133 @@ def fmt_p(p: float) -> str:
     return f"{p:.4f}"
 
 
-def build_pdf(out_pdf, df, cycles, jumps, group, cycle_test,
-              wind, reg, thr, n_trimmed, n_wind_faults, lamp_method="current",
-              n_ramp=0):
+def stats_block(els, tag, group, cycle_test, wind, reg, body, h2, small):
+    # --- group comparison ---
+    els.append(Paragraph(f"{tag} — Sample-level ON vs OFF comparison", h2))
+    els.append(Paragraph(
+        "Compares all samples pooled by lamp state, on the drift-corrected "
+        "methane trace. Robust to short-term noise but not to slow trend.",
+        body))
+    g = group
+    tbl = [["Metric", "ON", "OFF"],
+           ["n",           f"{g['n_on']}",         f"{g['n_off']}"],
+           ["mean (ppm)",  f"{g['mean_on']:.4f}",  f"{g['mean_off']:.4f}"],
+           ["median",      f"{g['median_on']:.4f}",f"{g['median_off']:.4f}"],
+           ["sd",          f"{g['std_on']:.4f}",   f"{g['std_off']:.4f}"]]
+    els.append(Table(tbl, hAlign="LEFT", style=TableStyle([
+        ("BACKGROUND",(0,0),(-1,0),colors.lightgrey),
+        ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),
+        ("GRID",(0,0),(-1,-1),0.25,colors.grey),
+        ("FONTSIZE",(0,0),(-1,-1),9)])))
+    els.append(Spacer(1, 6))
+    els.append(Paragraph(
+        f"ΔON−OFF = <b>{g['diff']:+.4f} ppm</b> · "
+        f"Welch t = {g['welch_t']:.3f}, p = {fmt_p(g['welch_p'])} · "
+        f"Mann-Whitney U = {g['mannwhitney_U']:.0f}, p = {fmt_p(g['mannwhitney_p'])}",
+        body))
+
+    # --- paired cycle test ---
+    els.append(Spacer(1, 8))
+    els.append(Paragraph(f"{tag} — Cycle-paired ON effect (drift-robust)", h2))
+    els.append(Paragraph(
+        "Each complete ON cycle is compared to the mean of its neighbouring "
+        "OFF cycles: effect = mean(ON) − ½·(mean(prev OFF)+mean(next OFF)). "
+        "This first-differencing removes any residual baseline drift.", body))
+    ct = cycle_test
+    tbl = [["Metric", "Value"],
+           ["ON cycles compared",           f"{ct['n_cycles']}"],
+           ["mean effect (ppm)",            f"{ct['mean_effect']:+.4f}"],
+           ["median effect (ppm)",          f"{ct['median_effect']:+.4f}"],
+           ["sd",                           f"{ct['sd_effect']:.4f}"],
+           ["95 % CI",                      f"[{ct['ci95_low']:+.4f}, {ct['ci95_high']:+.4f}]"],
+           ["one-sample t (H0: effect=0)",  f"t = {ct['t_stat']:.3f}, p = {fmt_p(ct['t_p'])}"],
+           ["Wilcoxon signed-rank",         f"W = {ct['wilcoxon_W']:.1f}, p = {fmt_p(ct['wilcoxon_p'])}"]]
+    els.append(Table(tbl, hAlign="LEFT", style=TableStyle([
+        ("BACKGROUND",(0,0),(-1,0),colors.lightgrey),
+        ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),
+        ("GRID",(0,0),(-1,-1),0.25,colors.grey),
+        ("FONTSIZE",(0,0),(-1,-1),9)])))
+
+    # --- windspeed ---
+    els.append(PageBreak())
+    els.append(Paragraph(f"{tag} — Windspeed relationships", h2))
+    w = wind
+    tbl = [["Test", "r / ρ", "p"],
+           ["methane ~ windspeed (Pearson)",  f"{w['sample_pearson_r']:+.3f}",  fmt_p(w['sample_pearson_p'])],
+           ["methane ~ windspeed (Spearman)", f"{w['sample_spearman_r']:+.3f}", fmt_p(w['sample_spearman_p'])]]
+    if "effect_pearson_r" in w:
+        tbl += [
+            ["ON-effect ~ windspeed (Pearson)",  f"{w['effect_pearson_r']:+.3f}",  fmt_p(w['effect_pearson_p'])],
+            ["ON-effect ~ windspeed (Spearman)", f"{w['effect_spearman_r']:+.3f}", fmt_p(w['effect_spearman_p'])]]
+    els.append(Table(tbl, hAlign="LEFT", style=TableStyle([
+        ("BACKGROUND",(0,0),(-1,0),colors.lightgrey),
+        ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),
+        ("GRID",(0,0),(-1,-1),0.25,colors.grey),
+        ("FONTSIZE",(0,0),(-1,-1),9)])))
+    if "effect_slope" in w:
+        els.append(Spacer(1, 6))
+        els.append(Paragraph(
+            f"OLS: effect = {w['effect_intercept']:+.4f} + "
+            f"{w['effect_slope']:+.4f}·windspeed  "
+            f"(slope SE = {w['effect_slope_stderr']:.4f}, p = {fmt_p(w['effect_slope_p'])}).",
+            body))
+
+    # --- multiple regression ---
+    els.append(Spacer(1, 10))
+    els.append(Paragraph(f"{tag} — Multiple regression (sample-level)", h2))
+    els.append(Paragraph(
+        f"Model: methane_corr ~ lamp + windspeed + lamp·windspeed  ·  "
+        f"R² = <b>{reg['r2']:.4f}</b> · n = {reg['n']}, dof = {reg['dof']}",
+        body))
+    tbl = [["Term", "coef", "SE", "t", "p"]]
+    for name in reg["coef"]:
+        tbl.append([name,
+                    f"{reg['coef'][name]:+.5f}",
+                    f"{reg['se'][name]:.5f}",
+                    f"{reg['t'][name]:+.3f}",
+                    fmt_p(reg['p'][name])])
+    els.append(Table(tbl, hAlign="LEFT", style=TableStyle([
+        ("BACKGROUND",(0,0),(-1,0),colors.lightgrey),
+        ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),
+        ("GRID",(0,0),(-1,-1),0.25,colors.grey),
+        ("FONTSIZE",(0,0),(-1,-1),9)])))
+    els.append(Spacer(1, 6))
+    els.append(Paragraph(
+        "Interpretation guide: the lamp coefficient is the ON−OFF shift at "
+        "zero windspeed; the interaction term shows how that shift changes "
+        "per unit of windspeed. A significant interaction means the lamp "
+        "effect depends on wind.", small))
+
+    # --- summary ---
+    els.append(Spacer(1, 10))
+    els.append(Paragraph(f"{tag} — Summary of findings", h2))
+    lamp_effect = reg["coef"]["lamp(ON=1)"]
+    lamp_p = reg["p"]["lamp(ON=1)"]
+    inter = reg["coef"]["lamp:windspeed"]
+    inter_p = reg["p"]["lamp:windspeed"]
+    bullet = []
+    bullet.append(
+        f"Cycle-paired mean ON effect: {ct['mean_effect']:+.4f} ppm "
+        f"(95% CI [{ct['ci95_low']:+.4f}, {ct['ci95_high']:+.4f}], "
+        f"paired t p={fmt_p(ct['t_p'])}).")
+    bullet.append(
+        f"Sample-level ON−OFF gap: {g['diff']:+.4f} ppm (Welch p={fmt_p(g['welch_p'])}).")
+    bullet.append(
+        f"Windspeed vs methane: r={wind['sample_pearson_r']:+.3f} "
+        f"(p={fmt_p(wind['sample_pearson_p'])}).")
+    if "effect_pearson_r" in wind:
+        bullet.append(
+            f"Per-cycle ON effect vs windspeed: r={wind['effect_pearson_r']:+.3f} "
+            f"(p={fmt_p(wind['effect_pearson_p'])}).")
+    bullet.append(
+        f"Regression: lamp coef={lamp_effect:+.4f} (p={fmt_p(lamp_p)}), "
+        f"lamp×wind interaction={inter:+.4f} (p={fmt_p(inter_p)}).")
+    for b in bullet:
+        els.append(Paragraph("• " + b, body))
+
+
+def build_pdf(out_pdf, df, cycles, jumps, variants, thr, n_trimmed,
+              n_wind_faults, lamp_method="current", n_ramp=0, long_info=None):
     doc = SimpleDocTemplate(out_pdf, pagesize=letter,
                             leftMargin=0.6*inch, rightMargin=0.6*inch,
                             topMargin=0.6*inch, bottomMargin=0.6*inch)
@@ -458,7 +589,7 @@ def build_pdf(out_pdf, df, cycles, jumps, group, cycle_test,
     els.append(Spacer(1, 8))
 
     # --- data quality ---
-    els.append(Paragraph("1. Data preparation", h2))
+    els.append(Paragraph("Data preparation", h2))
     n_on_c  = sum(1 for c in cycles if c.state == 1)
     n_off_c = sum(1 for c in cycles if c.state == 0)
     if n_trimmed > 0:
@@ -492,128 +623,26 @@ def build_pdf(out_pdf, df, cycles, jumps, group, cycle_test,
         f"Baseline step-jumps were detected as first-difference outliers "
         f"(|Δ| &gt; 8·MAD-scaled σ) and removed by subtracting each shift from "
         f"subsequent samples. Jumps corrected: <b>{len(jumps)}</b>.", body))
-    # --- group comparison ---
-    els.append(Paragraph("2. Sample-level ON vs OFF comparison", h2))
-    els.append(Paragraph(
-        "Compares all samples pooled by lamp state, on the drift-corrected "
-        "methane trace. Robust to short-term noise but not to slow trend.",
-        body))
-    g = group
-    tbl = [["Metric", "ON", "OFF"],
-           ["n",           f"{g['n_on']}",         f"{g['n_off']}"],
-           ["mean (ppm)",  f"{g['mean_on']:.4f}",  f"{g['mean_off']:.4f}"],
-           ["median",      f"{g['median_on']:.4f}",f"{g['median_off']:.4f}"],
-           ["sd",          f"{g['std_on']:.4f}",   f"{g['std_off']:.4f}"]]
-    els.append(Table(tbl, hAlign="LEFT", style=TableStyle([
-        ("BACKGROUND",(0,0),(-1,0),colors.lightgrey),
-        ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),
-        ("GRID",(0,0),(-1,-1),0.25,colors.grey),
-        ("FONTSIZE",(0,0),(-1,-1),9)])))
-    els.append(Spacer(1, 6))
-    els.append(Paragraph(
-        f"ΔON−OFF = <b>{g['diff']:+.4f} ppm</b> · "
-        f"Welch t = {g['welch_t']:.3f}, p = {fmt_p(g['welch_p'])} · "
-        f"Mann-Whitney U = {g['mannwhitney_U']:.0f}, p = {fmt_p(g['mannwhitney_p'])}",
-        body))
-
-    # --- paired cycle test ---
-    els.append(Spacer(1, 8))
-    els.append(Paragraph("3. Cycle-paired ON effect (drift-robust)", h2))
-    els.append(Paragraph(
-        "Each complete ON cycle is compared to the mean of its neighbouring "
-        "OFF cycles: effect = mean(ON) − ½·(mean(prev OFF)+mean(next OFF)). "
-        "This first-differencing removes any residual baseline drift.", body))
-    ct = cycle_test
-    tbl = [["Metric", "Value"],
-           ["ON cycles compared",           f"{ct['n_cycles']}"],
-           ["mean effect (ppm)",            f"{ct['mean_effect']:+.4f}"],
-           ["median effect (ppm)",          f"{ct['median_effect']:+.4f}"],
-           ["sd",                           f"{ct['sd_effect']:.4f}"],
-           ["95 % CI",                      f"[{ct['ci95_low']:+.4f}, {ct['ci95_high']:+.4f}]"],
-           ["one-sample t (H0: effect=0)",  f"t = {ct['t_stat']:.3f}, p = {fmt_p(ct['t_p'])}"],
-           ["Wilcoxon signed-rank",         f"W = {ct['wilcoxon_W']:.1f}, p = {fmt_p(ct['wilcoxon_p'])}"]]
-    els.append(Table(tbl, hAlign="LEFT", style=TableStyle([
-        ("BACKGROUND",(0,0),(-1,0),colors.lightgrey),
-        ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),
-        ("GRID",(0,0),(-1,-1),0.25,colors.grey),
-        ("FONTSIZE",(0,0),(-1,-1),9)])))
-
-    # --- windspeed ---
-    els.append(PageBreak())
-    els.append(Paragraph("4. Windspeed relationships", h2))
-    w = wind
-    tbl = [["Test", "r / ρ", "p"],
-           ["methane ~ windspeed (Pearson)",  f"{w['sample_pearson_r']:+.3f}",  fmt_p(w['sample_pearson_p'])],
-           ["methane ~ windspeed (Spearman)", f"{w['sample_spearman_r']:+.3f}", fmt_p(w['sample_spearman_p'])]]
-    if "effect_pearson_r" in w:
-        tbl += [
-            ["ON-effect ~ windspeed (Pearson)",  f"{w['effect_pearson_r']:+.3f}",  fmt_p(w['effect_pearson_p'])],
-            ["ON-effect ~ windspeed (Spearman)", f"{w['effect_spearman_r']:+.3f}", fmt_p(w['effect_spearman_p'])]]
-    els.append(Table(tbl, hAlign="LEFT", style=TableStyle([
-        ("BACKGROUND",(0,0),(-1,0),colors.lightgrey),
-        ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),
-        ("GRID",(0,0),(-1,-1),0.25,colors.grey),
-        ("FONTSIZE",(0,0),(-1,-1),9)])))
-    if "effect_slope" in w:
-        els.append(Spacer(1, 6))
+    if long_info and long_info["n_cycles"] > 0:
         els.append(Paragraph(
-            f"OLS: effect = {w['effect_intercept']:+.4f} + "
-            f"{w['effect_slope']:+.4f}·windspeed  "
-            f"(slope SE = {w['effect_slope_stderr']:.4f}, p = {fmt_p(w['effect_slope_p'])}).",
-            body))
-
-    # --- multiple regression ---
-    els.append(Spacer(1, 10))
-    els.append(Paragraph("5. Multiple regression (sample-level)", h2))
+            f"<b>Long stretches:</b> {long_info['n_cycles']} ON/OFF stretch(es) "
+            f"longer than {long_info['thr']:.0f} samples ({long_info['factor']:g}× the "
+            f"median cycle length), {long_info['n_samples']} samples in total. "
+            f"The lamp state during these is inferred from control signals "
+            f"only and may be wrong (e.g. a reboot silently turns the lamps "
+            f"off). All statistics below are therefore given twice: "
+            f"<b>A</b> with all data, <b>B</b> with these stretches removed "
+            f"(cycles are never paired across a removed stretch).", body))
     els.append(Paragraph(
-        f"Model: methane_corr ~ lamp + windspeed + lamp·windspeed  ·  "
-        f"R² = <b>{reg['r2']:.4f}</b> · n = {reg['n']}, dof = {reg['dof']}",
-        body))
-    tbl = [["Term", "coef", "SE", "t", "p"]]
-    for name in reg["coef"]:
-        tbl.append([name,
-                    f"{reg['coef'][name]:+.5f}",
-                    f"{reg['se'][name]:.5f}",
-                    f"{reg['t'][name]:+.3f}",
-                    fmt_p(reg['p'][name])])
-    els.append(Table(tbl, hAlign="LEFT", style=TableStyle([
-        ("BACKGROUND",(0,0),(-1,0),colors.lightgrey),
-        ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),
-        ("GRID",(0,0),(-1,-1),0.25,colors.grey),
-        ("FONTSIZE",(0,0),(-1,-1),9)])))
-    els.append(Spacer(1, 6))
-    els.append(Paragraph(
-        "Interpretation guide: the lamp coefficient is the ON−OFF shift at "
-        "zero windspeed; the interaction term shows how that shift changes "
-        "per unit of windspeed. A significant interaction means the lamp "
-        "effect depends on wind.", small))
-
-    # --- summary ---
-    els.append(Spacer(1, 10))
-    els.append(Paragraph("6. Summary of findings", h2))
-    lamp_effect = reg["coef"]["lamp(ON=1)"]
-    lamp_p = reg["p"]["lamp(ON=1)"]
-    inter = reg["coef"]["lamp:windspeed"]
-    inter_p = reg["p"]["lamp:windspeed"]
-    bullet = []
-    bullet.append(
-        f"Cycle-paired mean ON effect: {ct['mean_effect']:+.4f} ppm "
-        f"(95% CI [{ct['ci95_low']:+.4f}, {ct['ci95_high']:+.4f}], "
-        f"paired t p={fmt_p(ct['t_p'])}).")
-    bullet.append(
-        f"Sample-level ON−OFF gap: {g['diff']:+.4f} ppm (Welch p={fmt_p(g['welch_p'])}).")
-    bullet.append(
-        f"Windspeed vs methane: r={wind['sample_pearson_r']:+.3f} "
-        f"(p={fmt_p(wind['sample_pearson_p'])}).")
-    if "effect_pearson_r" in wind:
-        bullet.append(
-            f"Per-cycle ON effect vs windspeed: r={wind['effect_pearson_r']:+.3f} "
-            f"(p={fmt_p(wind['effect_pearson_p'])}).")
-    bullet.append(
-        f"Regression: lamp coef={lamp_effect:+.4f} (p={fmt_p(lamp_p)}), "
-        f"lamp×wind interaction={inter:+.4f} (p={fmt_p(inter_p)}).")
-    for b in bullet:
-        els.append(Paragraph("• " + b, body))
+        "Sample-level ON/OFF, cycle-paired, windspeed and regression results "
+        "follow, one set per variant.", body))
+    for k, (tag, v) in enumerate(variants):
+        els.append(PageBreak())
+        els.append(Paragraph(f"{tag}: {v['label']}", h1))
+        els.append(Paragraph(
+            f"Samples: {len(v['df'])} · cycles: {len(v['cycles'])}", small))
+        stats_block(els, tag, v["group"], v["cycle_test"], v["wind"], v["reg"],
+                    body, h2, small)
 
     doc.build(els)
 
@@ -621,6 +650,22 @@ def build_pdf(out_pdf, df, cycles, jumps, group, cycle_test,
 # ---------------------------------------------------------------------------
 # 8. MAIN
 # ---------------------------------------------------------------------------
+def drop_long_cycles(df: pd.DataFrame, cycles: list[Cycle], factor: float):
+    """
+    Remove samples belonging to unusually long ON/OFF stretches (longer than
+    factor x the median cycle length). Returns (filtered df, number of long
+    cycles, number of samples removed, length threshold in samples).
+    """
+    thr_n = factor * float(np.median([c.n for c in cycles]))
+    long_c = [c for c in cycles if c.n > thr_n]
+    if not long_c:
+        return df, 0, 0, thr_n
+    keep = np.ones(len(df), dtype=bool)
+    for c in long_c:
+        keep[c.start:c.end] = False
+    return df.loc[keep].reset_index(drop=True), len(long_c), int((~keep).sum()), thr_n
+
+
 def prepare(paths: list[str], jump_k: float = 8.0):
     """
     Parse logs and run the cleaning pipeline (lamp state, trim, jump and
@@ -646,6 +691,7 @@ def prepare(paths: list[str], jump_k: float = 8.0):
         sys.exit(f"Too few samples after trim ({len(df)}).")
     df["methane_corr"], jumps = correct_jumps(df["methane"].values, k=jump_k)
     df["windspeed"], n_wind_faults = clean_windspeed(df["windspeed"].values)
+    df["orig"] = np.arange(len(df))
     return df, jumps, thr, n_trimmed, n_wind_faults, lamp_method, n_ramp
 
 
@@ -655,6 +701,10 @@ def main():
     ap.add_argument("-o", "--out", default="lamp_report.pdf")
     ap.add_argument("--jump-k", type=float, default=8.0,
                     help="Jump-detection threshold in MAD-scaled sigmas (default 8)")
+    ap.add_argument("--long-factor", type=float, default=3.0,
+                    help="ON/OFF stretches longer than this many times the "
+                         "median cycle length are treated as 'long' and "
+                         "excluded from variant B (default 3)")
     args = ap.parse_args()
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -663,21 +713,39 @@ def main():
          lamp_method, n_ramp) = prepare(paths, args.jump_k)
     df.attrs["source"] = os.path.basename(args.tarball)
 
-    cycles  = segment_cycles(df)
-    effects = per_cycle_effects(cycles)
-    group   = group_tests(df)
-    cyc_t   = paired_cycle_test(effects) if len(effects) else {
-        "n_cycles":0, "mean_effect":np.nan, "median_effect":np.nan,
-        "sd_effect":np.nan, "ci95_low":np.nan, "ci95_high":np.nan,
-        "t_stat":np.nan, "t_p":np.nan, "wilcoxon_W":np.nan, "wilcoxon_p":np.nan}
-    wind    = windspeed_analysis(df, effects)
-    reg     = multi_regression(df)
+    def analyze(d):
+        cyc = segment_cycles(d)
+        eff = per_cycle_effects(cyc)
+        return {
+            "df": d, "cycles": cyc,
+            "group": group_tests(d),
+            "cycle_test": paired_cycle_test(eff) if len(eff) else {
+                "n_cycles":0, "mean_effect":np.nan, "median_effect":np.nan,
+                "sd_effect":np.nan, "ci95_low":np.nan, "ci95_high":np.nan,
+                "t_stat":np.nan, "t_p":np.nan, "wilcoxon_W":np.nan, "wilcoxon_p":np.nan},
+            "wind": windspeed_analysis(d, eff),
+            "reg": multi_regression(d),
+        }
 
-    build_pdf(args.out, df, cycles, jumps, group, cyc_t, wind, reg, thr,
-              n_trimmed, n_wind_faults, lamp_method, n_ramp)
+    full = analyze(df)
+    full["label"] = "all data"
+    variants = [("A", full)]
+    df_b, n_long, n_long_samples, thr_n = drop_long_cycles(
+        df, full["cycles"], args.long_factor)
+    long_info = {"n_cycles": n_long, "n_samples": n_long_samples,
+                 "thr": thr_n, "factor": args.long_factor}
+    if n_long:
+        b = analyze(df_b)
+        b["label"] = f"long stretches removed ({n_long} stretch(es), {n_long_samples} samples)"
+        variants.append(("B", b))
+
+    cycles = full["cycles"]
+    build_pdf(args.out, df, cycles, jumps, variants, thr,
+              n_trimmed, n_wind_faults, lamp_method, n_ramp, long_info)
     print(f"Wrote {args.out}  ({len(df)} samples, {n_trimmed} trimmed, "
           f"{n_ramp} ramp samples excluded, {len(cycles)} cycles, "
-          f"{len(jumps)} jumps corrected, {n_wind_faults} wind faults interpolated)")
+          f"{len(jumps)} jumps corrected, {n_wind_faults} wind faults interpolated, "
+          f"{n_long} long stretches [{n_long_samples} samples] in variant B only)")
 
 
 if __name__ == "__main__":

@@ -16,3 +16,16 @@ Work done:
   itself only checked via Agg render.
 
 Committed and pushed.
+
+Later in session:
+- lamp_analysis.py now reports every statistic twice: A = all data, B = with
+  long ON/OFF stretches (> --long-factor (default 3) x median cycle length)
+  removed; cycles never paired across a removed stretch. Reason: lamp state
+  in long stretches is inferred from control signals and may be wrong (reboot
+  silently turns lamps off).
+- lamp_plot.py hatches the long stretches.
+- Real data (lclogs_202609190503.tar.gz): 2 long stretches (21141 samples, 48%).
+  Sample-level ON-OFF diff -0.0168 ppm (p~3e-25) with them, +0.0009 (p=0.71)
+  without; paired and regression effects null either way. Windspeed in that
+  data looks stuck/faulty (1e-5 scale, one spike) - not investigated.
+- PDF text layout not visually verified (no PDF text tool available).
