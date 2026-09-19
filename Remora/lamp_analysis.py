@@ -22,27 +22,26 @@ Lamp state is inferred one of two ways, depending on what the log contains:
 Baseline step-jumps in the methane trace (sensor recalibration ticks,
 unrelated to the lamp cycle) are detected and removed.
 
+The logs are read from a .tar.gz archive (unpacked to a temp directory).
+This program only reports; for an interactive plot of the same data see
+lamp_plot.py.
+
 Usage:
-    python3 lamp_analysis.py <logfile> [-o report.pdf]
+    python3 lamp_analysis.py <logs.tar.gz> [-o report.pdf]
 """
 from __future__ import annotations
-import argparse, re, sys, io
+import argparse, re, sys, io, os, tarfile, tempfile
 from datetime import datetime
 from dataclasses import dataclass
 import numpy as np
 import pandas as pd
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
-from matplotlib.patches import Patch
 from scipy import stats
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.lib import colors
 from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, PageBreak,
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak,
 )
 
 
@@ -55,11 +54,28 @@ LINE_RE = re.compile(
 )
 
 
+def extract_logs(tarball: str, dest: str) -> list[str]:
+    """Unpack a .tar.gz into dest and return the paths of the regular files."""
+    if not tarfile.is_tarfile(tarball):
+        sys.exit(f"{tarball} is not a tar archive.")
+    with tarfile.open(tarball, "r:*") as tf:
+        # Only extract plain files, and never anything that would land
+        # outside dest (absolute paths or ../ components).
+        root = os.path.realpath(dest)
+        members = [m for m in tf.getmembers() if m.isfile()
+                   and os.path.realpath(os.path.join(dest, m.name)).startswith(root + os.sep)]
+        tf.extractall(dest, members=members, filter="data")
+    paths = [os.path.join(dest, m.name) for m in members]
+    if not paths:
+        sys.exit(f"No files found in {tarball}.")
+    return sorted(paths)
+
+
 def parse_log(paths: list[str]) -> pd.DataFrame:
     """Parse one or more log files, concatenate, sort by time, dedupe."""
     rows = []
     for path in paths:
-        with open(path) as fh:
+        with open(path, errors="replace") as fh:
             for line in fh:
                 if "Sensors:" not in line:
                     continue
@@ -86,7 +102,7 @@ def parse_quad_events(paths: list[str]) -> list[tuple[datetime, str, bool]]:
     """Parse 'Quad <name> set to ON/OFF' events from one or more log files."""
     events = []
     for path in paths:
-        with open(path) as fh:
+        with open(path, errors="replace") as fh:
             for line in fh:
                 m = QUAD_RE.search(line)
                 if not m:
@@ -415,47 +431,7 @@ def multi_regression(df: pd.DataFrame) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# 6. PLOT
-# ---------------------------------------------------------------------------
-def make_plot(df: pd.DataFrame, cycles: list[Cycle], out_png: str):
-    fig, ax = plt.subplots(figsize=(12, 4.2))
-
-    # ON/OFF background shading
-    for c in cycles:
-        color = "#FFF3A0" if c.state == 1 else "#B8DDF5"
-        ax.axvspan(df["time"].iloc[c.start],
-                   df["time"].iloc[c.end - 1] if c.end < len(df) else df["time"].iloc[-1],
-                   facecolor=color, alpha=0.85, zorder=0)
-
-    # methane
-    ax.plot(df["time"], df["methane_corr"], color="black", lw=0.7, zorder=3)
-    ax.axhline(df["methane_corr"].mean(), color="red", ls="--", lw=1, zorder=4)
-
-    ymin, ymax = np.nanmin(df["methane_corr"]), np.nanmax(df["methane_corr"])
-    span = ymax - ymin
-    w = df["windspeed"].values.astype(float)
-    w_r = (w - np.nanmin(w)) / (np.nanmax(w) - np.nanmin(w) + 1e-12)
-    w_scaled = ymin + 0.15 * span + 0.20 * span * w_r
-    ax.plot(df["time"], w_scaled, color="#4E8C6E", lw=0.7, zorder=2)
-    legend_elems = [
-        Patch(facecolor="#FFF3A0", edgecolor="k", label="ON"),
-        Patch(facecolor="#B8DDF5", edgecolor="k", label="OFF"),
-        plt.Line2D([0], [0], color="red", ls="--", label="overall mean"),
-        plt.Line2D([0], [0], color="#4E8C6E", label="windspeed (rescaled)"),
-    ]
-
-    ax.set_title("Methane — ON (yellow) vs OFF (blue) cycles")
-    ax.set_ylabel("Methane (ppm)"); ax.set_xlabel("Time")
-    ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
-    ax.xaxis.set_major_locator(mdates.HourLocator(interval=3))
-    ax.legend(handles=legend_elems, loc="upper left", framealpha=0.9)
-    fig.tight_layout()
-    fig.savefig(out_png, dpi=160)
-    plt.close(fig)
-
-
-# ---------------------------------------------------------------------------
-# 7. PDF
+# 6. PDF
 # ---------------------------------------------------------------------------
 def fmt_p(p: float) -> str:
     if np.isnan(p): return "n/a"
@@ -463,7 +439,7 @@ def fmt_p(p: float) -> str:
     return f"{p:.4f}"
 
 
-def build_pdf(out_pdf, plot_png, df, cycles, jumps, group, cycle_test,
+def build_pdf(out_pdf, df, cycles, jumps, group, cycle_test,
               wind, reg, thr, n_trimmed, n_wind_faults, lamp_method="current",
               n_ramp=0):
     doc = SimpleDocTemplate(out_pdf, pagesize=letter,
@@ -516,28 +492,8 @@ def build_pdf(out_pdf, plot_png, df, cycles, jumps, group, cycle_test,
         f"Baseline step-jumps were detected as first-difference outliers "
         f"(|Δ| &gt; 8·MAD-scaled σ) and removed by subtracting each shift from "
         f"subsequent samples. Jumps corrected: <b>{len(jumps)}</b>.", body))
-    if jumps:
-        rows = [["#", "sample idx", "time", "shift (ppm)"]]
-        for k, (i, s) in enumerate(jumps, 1):
-            rows.append([str(k), str(i),
-                         df["time"].iloc[i].strftime("%H:%M:%S"),
-                         f"{s:+.4f}"])
-        t = Table(rows, hAlign="LEFT")
-        t.setStyle(TableStyle([
-            ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
-            ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
-            ("GRID", (0,0), (-1,-1), 0.25, colors.grey),
-            ("FONTSIZE", (0,0), (-1,-1), 8),
-        ]))
-        els.append(t); els.append(Spacer(1, 8))
-
-    # --- plot ---
-    els.append(Paragraph("2. Time series (drift-corrected)", h2))
-    els.append(Image(plot_png, width=7.2*inch, height=2.6*inch))
-    els.append(Spacer(1, 6))
-
     # --- group comparison ---
-    els.append(Paragraph("3. Sample-level ON vs OFF comparison", h2))
+    els.append(Paragraph("2. Sample-level ON vs OFF comparison", h2))
     els.append(Paragraph(
         "Compares all samples pooled by lamp state, on the drift-corrected "
         "methane trace. Robust to short-term noise but not to slow trend.",
@@ -562,7 +518,7 @@ def build_pdf(out_pdf, plot_png, df, cycles, jumps, group, cycle_test,
 
     # --- paired cycle test ---
     els.append(Spacer(1, 8))
-    els.append(Paragraph("4. Cycle-paired ON effect (drift-robust)", h2))
+    els.append(Paragraph("3. Cycle-paired ON effect (drift-robust)", h2))
     els.append(Paragraph(
         "Each complete ON cycle is compared to the mean of its neighbouring "
         "OFF cycles: effect = mean(ON) − ½·(mean(prev OFF)+mean(next OFF)). "
@@ -584,7 +540,7 @@ def build_pdf(out_pdf, plot_png, df, cycles, jumps, group, cycle_test,
 
     # --- windspeed ---
     els.append(PageBreak())
-    els.append(Paragraph("5. Windspeed relationships", h2))
+    els.append(Paragraph("4. Windspeed relationships", h2))
     w = wind
     tbl = [["Test", "r / ρ", "p"],
            ["methane ~ windspeed (Pearson)",  f"{w['sample_pearson_r']:+.3f}",  fmt_p(w['sample_pearson_p'])],
@@ -608,7 +564,7 @@ def build_pdf(out_pdf, plot_png, df, cycles, jumps, group, cycle_test,
 
     # --- multiple regression ---
     els.append(Spacer(1, 10))
-    els.append(Paragraph("6. Multiple regression (sample-level)", h2))
+    els.append(Paragraph("5. Multiple regression (sample-level)", h2))
     els.append(Paragraph(
         f"Model: methane_corr ~ lamp + windspeed + lamp·windspeed  ·  "
         f"R² = <b>{reg['r2']:.4f}</b> · n = {reg['n']}, dof = {reg['dof']}",
@@ -634,7 +590,7 @@ def build_pdf(out_pdf, plot_png, df, cycles, jumps, group, cycle_test,
 
     # --- summary ---
     els.append(Spacer(1, 10))
-    els.append(Paragraph("7. Summary of findings", h2))
+    els.append(Paragraph("6. Summary of findings", h2))
     lamp_effect = reg["coef"]["lamp(ON=1)"]
     lamp_p = reg["p"]["lamp(ON=1)"]
     inter = reg["coef"]["lamp:windspeed"]
@@ -665,21 +621,16 @@ def build_pdf(out_pdf, plot_png, df, cycles, jumps, group, cycle_test,
 # ---------------------------------------------------------------------------
 # 8. MAIN
 # ---------------------------------------------------------------------------
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("logfile", nargs="+",
-                    help="one or more log files (any order; sorted by timestamp)")
-    ap.add_argument("-o", "--out", default="lamp_report.pdf")
-    ap.add_argument("--jump-k", type=float, default=8.0,
-                    help="Jump-detection threshold in MAD-scaled sigmas (default 8)")
-    args = ap.parse_args()
-
-    df = parse_log(args.logfile)
-    df.attrs["source"] = ", ".join(args.logfile)
+def prepare(paths: list[str], jump_k: float = 8.0):
+    """
+    Parse logs and run the cleaning pipeline (lamp state, trim, jump and
+    windspeed correction). Shared with lamp_plot.py so both see the same data.
+    """
+    df = parse_log(paths)
     if len(df) < 100:
         sys.exit(f"Too few valid samples parsed ({len(df)}).")
 
-    quad_events = parse_quad_events(args.logfile)
+    quad_events = parse_quad_events(paths)
     if quad_events:
         lamp_method = "quad-log"
         thr = None
@@ -693,8 +644,24 @@ def main():
     df, n_trimmed = trim_to_experiment(df)
     if len(df) < 100:
         sys.exit(f"Too few samples after trim ({len(df)}).")
-    df["methane_corr"], jumps = correct_jumps(df["methane"].values, k=args.jump_k)
+    df["methane_corr"], jumps = correct_jumps(df["methane"].values, k=jump_k)
     df["windspeed"], n_wind_faults = clean_windspeed(df["windspeed"].values)
+    return df, jumps, thr, n_trimmed, n_wind_faults, lamp_method, n_ramp
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("tarball", help="a .tar.gz containing the log files")
+    ap.add_argument("-o", "--out", default="lamp_report.pdf")
+    ap.add_argument("--jump-k", type=float, default=8.0,
+                    help="Jump-detection threshold in MAD-scaled sigmas (default 8)")
+    args = ap.parse_args()
+
+    with tempfile.TemporaryDirectory() as tmp:
+        paths = extract_logs(args.tarball, tmp)
+        (df, jumps, thr, n_trimmed, n_wind_faults,
+         lamp_method, n_ramp) = prepare(paths, args.jump_k)
+    df.attrs["source"] = os.path.basename(args.tarball)
 
     cycles  = segment_cycles(df)
     effects = per_cycle_effects(cycles)
@@ -706,9 +673,7 @@ def main():
     wind    = windspeed_analysis(df, effects)
     reg     = multi_regression(df)
 
-    png = "/tmp/_lamp_plot.png"
-    make_plot(df, cycles, png)
-    build_pdf(args.out, png, df, cycles, jumps, group, cyc_t, wind, reg, thr,
+    build_pdf(args.out, df, cycles, jumps, group, cyc_t, wind, reg, thr,
               n_trimmed, n_wind_faults, lamp_method, n_ramp)
     print(f"Wrote {args.out}  ({len(df)} samples, {n_trimmed} trimmed, "
           f"{n_ramp} ramp samples excluded, {len(cycles)} cycles, "

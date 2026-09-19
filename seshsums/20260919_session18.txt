@@ -1,0 +1,18 @@
+Session: 20260919 session 18
+
+Work done:
+- shiptrack/shipat: added required 4th arg <speed> (numeric), new "speed"
+  column after lon. Existing ship-tracks.tsv NOT modified; user will repair
+  old rows by hand.
+- Remora/lamp_analysis.py: input is now a single .tar.gz (unpacked to a temp
+  dir, plain files only, path-traversal guarded); plotting removed (matplotlib
+  no longer imported, PDF plot section dropped, sections renumbered); the
+  per-jump table removed from the PDF (only the count remains); pipeline
+  factored into prepare() for reuse.
+- Remora/lamp_plot.py (new): takes the same .tar.gz, interactive matplotlib
+  window (methane w/ ON/OFF shading + windspeed panel, wheel zoom, arrow-key
+  scroll, h = home, gaps between days not bridged).
+- Tested on a synthetic 3-day tarball (not real data); interactive window
+  itself only checked via Agg render.
+
+Committed and pushed.
