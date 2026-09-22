@@ -777,3 +777,74 @@ annotate_tsv.py - Merges a Presentation-style neurofeedback TSV with all
     python3 annotate_tsv.py recording.tsv > annotated.tsv
     python3 annotate_tsv.py recording.tsv --timedelta 7200 > annotated.tsv
 
+=====================================================================
+
+#rsync push of shiptrack data to LampRay
+
+## Ship-track file propagation
+
+`ship-tracks.tsv` is automatically propagated from the Mac on which the ship-tracking repository runs, through the Debian relay, to the Raspberry Pi. Only the current version of the file matters; intermediate versions do not need to be preserved.
+
+The pipeline is:
+
+```text
+Mac  --rsync/ssh-->  Debian relay  --rsync/ssh-->  Raspberry Pi
+       launchd                         systemd
+       hourly                          hourly
+```
+
+### Mac → relay
+
+The Mac uses the LaunchAgent:
+
+```text
+~/Library/LaunchAgents/com.jeff.shipatrsync.plist
+```
+
+It runs approximately once per hour and performs the equivalent of:
+
+```bash
+rsync -a /path/to/ship-tracks.tsv relay:~
+```
+
+The SSH configuration must allow `ssh relay` to work non-interactively.
+
+To inspect the job:
+
+```bash
+launchctl print gui/$(id -u)/com.jeff.shipatrsync
+```
+
+To force an immediate transfer:
+
+```bash
+launchctl kickstart -k gui/$(id -u)/com.jeff.shipatrsync
+```
+
+The source file should not be under macOS `Desktop`, `Documents`, or another TCC-protected directory unless the background process has appropriate permission; otherwise rsync may fail with `Operation not permitted`.
+
+### Relay → Raspberry Pi
+
+From the Debian relay, the Pi is accessible through a local SSH tunnel on port 21965:
+
+```bash
+ssh -p 21965 localhost
+```
+
+The corresponding manual rsync command is:
+
+```bash
+rsync -a -e 'ssh -p 21965' ~/ship-tracks.tsv localhost:~
+```
+
+A systemd oneshot service, `shiptrack-rsync.service`, runs this command as the normal SSH user. A `shiptrack-rsync.timer` invokes the service approximately once per hour.
+
+Useful commands:
+
+```bash
+systemctl status shiptrack-rsync.service
+systemctl status shiptrack-rsync.timer
+systemctl list-timers | grep sh
+```
+
+
