@@ -119,6 +119,32 @@ def parse_quad_events(paths: list[str]) -> list[tuple[datetime, str, bool]]:
     return events
 
 
+def quad_on_counts(
+    times: pd.Series, events: list[tuple[datetime, str, bool]]
+) -> tuple[np.ndarray, int]:
+    """
+    Per-sample count of simultaneously energized quads, from quad ON/OFF
+    events. Returns (counts, n_quads); shared by lamp_state_from_quads and
+    by lamp_ramp_plot.py, which needs the ramp-up progression itself
+    (counts / n_quads) rather than just the collapsed ON/OFF/ramp state.
+    """
+    quad_names = sorted({name for _, name, _ in events})
+    n_quads = len(quad_names)
+    on = {name: False for name in quad_names}
+    counts = np.zeros(len(times), dtype=int)
+    ei = 0
+    n_on = 0
+    for i, t in enumerate(times):
+        while ei < len(events) and events[ei][0] <= t:
+            _, name, is_on = events[ei]
+            if on[name] != is_on:
+                on[name] = is_on
+                n_on += 1 if is_on else -1
+            ei += 1
+        counts[i] = n_on
+    return counts, n_quads
+
+
 def lamp_state_from_quads(
     times: pd.Series, events: list[tuple[datetime, str, bool]]
 ) -> tuple[np.ndarray, int]:
@@ -133,25 +159,8 @@ def lamp_state_from_quads(
 
     Returns the state array and the count of ramp samples.
     """
-    quad_names = sorted({name for _, name, _ in events})
-    n_quads = len(quad_names)
-    on = {name: False for name in quad_names}
-    lamp = np.zeros(len(times), dtype=int)
-    ei = 0
-    n_on = 0
-    for i, t in enumerate(times):
-        while ei < len(events) and events[ei][0] <= t:
-            _, name, is_on = events[ei]
-            if on[name] != is_on:
-                on[name] = is_on
-                n_on += 1 if is_on else -1
-            ei += 1
-        if n_on == n_quads:
-            lamp[i] = 1
-        elif n_on == 0:
-            lamp[i] = 0
-        else:
-            lamp[i] = -1
+    counts, n_quads = quad_on_counts(times, events)
+    lamp = np.where(counts == n_quads, 1, np.where(counts == 0, 0, -1))
     n_ramp = int(np.sum(lamp == -1))
     return lamp, n_ramp
 

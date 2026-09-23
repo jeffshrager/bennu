@@ -29,3 +29,22 @@ Later in session:
   without; paired and regression effects null either way. Windspeed in that
   data looks stuck/faulty (1e-5 scale, one spike) - not investigated.
 - PDF text layout not visually verified (no PDF text tool available).
+
+2026-09-23:
+- New Remora/lamp_ramp_plot.py: overlays every ramp-up transient (the
+  samples lamp_analysis.py/lamp_plot.py exclude as neither ON nor OFF,
+  quad-log rigs only) on a common relative-time-from-ramp-start axis,
+  methane baseline-subtracted per instance, mean +/- SEM error bars;
+  second panel overlays the quads-on fraction itself as a sanity check
+  the instances actually line up. --direction up|down|both (default up;
+  on the real data ramp-down has 0 instances - the lamps switch off
+  instantly, only power-up is staged). Refactored
+  lamp_analysis.lamp_state_from_quads to share a new quad_on_counts()
+  helper (identical behavior, verified) so lamp_ramp_plot.py doesn't
+  duplicate the quad-event-scanning loop.
+- Tested on lclogs_202609190503.tar.gz: 191 ramp-up instances, median
+  98s; quads-on-fraction overlay confirms consistent staging; mean
+  methane stays ~flat (no visible ramp-up effect) until the sparsely-
+  covered tail. Confirmed the synthetic (no-quad-events) tarball and
+  --direction down give clean error messages rather than crashing.
+- Committed and pushed.
