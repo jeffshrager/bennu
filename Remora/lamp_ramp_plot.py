@@ -2,17 +2,23 @@
 """
 lamp_ramp_plot.py
 ==================
-Overlay of the lamp ramp transients -- the samples lamp_analysis.py and
+Overlay of the lamp ramp-up transients -- the samples lamp_analysis.py and
 lamp_plot.py exclude from the ON/OFF comparison because only *some* quads
 are energized (the sequential ramp-up/ramp-down). Quad-log rigs only; a
 current-sensor rig switches instantly and has no ramp state to overlay.
 
 Each ramp instance is anchored at its own start time (relative seconds)
-and, for methane, baseline-subtracted against its own pre-ramp value, then
-all instances are overlaid on one axis. The mean across instances is drawn
-with standard-error bars. A second panel overlays the physical ramp
-profile itself (fraction of quads energized) the same way, as a sanity
-check that the instances line up.
+and baseline-subtracted against its own pre-ramp methane value, then all
+instances are overlaid on one axis. The mean across instances is drawn
+with standard-error bars.
+
+A handful of "ramp" blocks run far longer than a normal staged power-up
+(hours instead of ~100 s) -- almost certainly a quad stuck partially on,
+e.g. after a silent reboot, not a real ramp. These would otherwise stretch
+the time axis out to the length of the longest one and swamp the real
+ramps into a sliver near zero. Blocks longer than --outlier-factor times
+the median duration (default 5x) are excluded from the overlay and
+reported separately instead.
 
 Usage:
     python3 lamp_ramp_plot.py <logs.tar.gz> [-o out.png]
@@ -58,20 +64,33 @@ def find_ramp_blocks(lamp: np.ndarray, direction: str) -> list[tuple[int, int]]:
     return blocks
 
 
-def overlay(tn: np.ndarray, series: np.ndarray, blocks: list[tuple[int, int]],
-            baseline_subtract: bool):
+def split_outliers(tn: np.ndarray, blocks: list[tuple[int, int]], factor: float):
     """
-    Put each ramp instance on a common relative-time-from-start grid via
-    linear interpolation (baseline-subtracted against its own first
-    sample, if requested). Returns (grid, matrix); matrix is
-    n_instances x len(grid), NaN past an instance's own duration.
+    Split blocks into (normal, outliers) by duration, relative to the
+    MEDIAN duration (robust to the outliers themselves, unlike the mean).
+    A block longer than factor x the median is treated as a stuck state,
+    not a real ramp.
+    """
+    durations = np.array([tn[b] - tn[a] for a, b in blocks])
+    thr = factor * float(np.median(durations))
+    normal    = [blk for blk, d in zip(blocks, durations) if d <= thr]
+    outliers  = [(blk, d) for blk, d in zip(blocks, durations) if d > thr]
+    return normal, outliers
+
+
+def overlay(tn: np.ndarray, methane: np.ndarray, blocks: list[tuple[int, int]]):
+    """
+    Put each ramp instance's methane on a common relative-time-from-start
+    grid via linear interpolation, baseline-subtracted against its own
+    first sample. Returns (grid, matrix); matrix is n_instances x
+    len(grid), NaN past an instance's own duration.
     """
     durations = [tn[b] - tn[a] for a, b in blocks]
     grid = np.arange(0, max(durations) + SAMPLE_STEP, SAMPLE_STEP)
     mat = np.full((len(blocks), len(grid)), np.nan)
     for row, (a, b) in enumerate(blocks):
         t_rel = tn[a:b + 1] - tn[a]
-        y = series[a:b + 1] - (series[a] if baseline_subtract else 0.0)
+        y = methane[a:b + 1] - methane[a]
         n = int(np.floor(t_rel[-1] / SAMPLE_STEP)) + 1
         mat[row, :n] = np.interp(grid[:n], t_rel, y)
     return grid, mat
@@ -100,6 +119,11 @@ def main():
     ap.add_argument("--direction", choices=["up", "down", "both"], default="up",
                     help="which ramp transitions to overlay "
                          "(default: up, i.e. lamps turning on)")
+    ap.add_argument("--outlier-factor", type=float, default=5.0,
+                    help="exclude ramp blocks longer than this many times "
+                         "the median duration -- a stuck/partial state "
+                         "(e.g. a silent reboot), not a real ramp "
+                         "(default 5)")
     ap.add_argument("--err-points", type=int, default=15,
                     help="number of error-bar markers drawn along the mean "
                          "curve (default 15)")
@@ -116,54 +140,56 @@ def main():
     counts, n_quads = quad_on_counts(df["time"], events)
     lamp = np.where(counts == n_quads, 1, np.where(counts == 0, 0, -1))
     methane_corr, _ = correct_jumps(df["methane"].values, k=args.jump_k)
-    frac_on = counts / n_quads
     tn = (df["time"] - df["time"].iloc[0]).dt.total_seconds().values
 
-    blocks = find_ramp_blocks(lamp, args.direction)
-    if len(blocks) < 2:
-        sys.exit(f"Only {len(blocks)} ramp-{args.direction} instance(s) found; "
+    all_blocks = find_ramp_blocks(lamp, args.direction)
+    if len(all_blocks) < 2:
+        sys.exit(f"Only {len(all_blocks)} ramp-{args.direction} instance(s) found; "
                   f"need at least 2 to overlay with error bars.")
-    durations = [tn[b] - tn[a] for a, b in blocks]
+    blocks, outliers = split_outliers(tn, all_blocks, args.outlier_factor)
+    if len(blocks) < 2:
+        sys.exit(f"Only {len(blocks)} non-outlier ramp-{args.direction} instance(s) "
+                  f"left after excluding stretches > {args.outlier_factor:g}x the "
+                  f"median duration; need at least 2.")
+    durations = np.array([tn[b] - tn[a] for a, b in blocks])
 
-    grid, mat_m = overlay(tn, methane_corr, blocks, baseline_subtract=True)
-    _,    mat_f = overlay(tn, frac_on,       blocks, baseline_subtract=False)
-    mean_m, sem_m, n_cov = mean_sem(mat_m)
+    grid, mat = overlay(tn, methane_corr, blocks)
+    mean_m, sem_m, n_cov = mean_sem(mat)
 
     # Truncate the tail where fewer than 2 instances still cover the grid
     # (the longest instance(s) alone past that point, noisy and not really
     # an "overlay" any more).
     covered = np.flatnonzero(n_cov >= 2)
     last = int(covered[-1]) if len(covered) else 0
-    grid, mat_m, mat_f = grid[:last + 1], mat_m[:, :last + 1], mat_f[:, :last + 1]
-    mean_m, sem_m, n_cov = mean_m[:last + 1], sem_m[:last + 1], n_cov[:last + 1]
-    mean_f, sem_f, _ = mean_sem(mat_f)
+    grid, mat = grid[:last + 1], mat[:, :last + 1]
+    mean_m, sem_m = mean_m[:last + 1], sem_m[:last + 1]
 
     dirn = {"up": "turning ON", "down": "turning OFF", "both": "turning ON/OFF"}[args.direction]
     print(f"{len(blocks)} ramp-{args.direction} instance(s) ({dirn}), "
           f"median duration {np.median(durations):.0f}s")
+    if outliers:
+        odurs = ", ".join(f"{d/60:.0f} min" for _, d in outliers)
+        print(f"Excluded {len(outliers)} outlier stretch(es) as stuck/partial "
+              f"states, not ramps (durations: {odurs}) -- lamp state during "
+              f"these is unverified (e.g. a silent reboot).")
 
-    fig, (ax, axf) = plt.subplots(2, 1, sharex=True, figsize=(9, 7))
+    fig, ax = plt.subplots(figsize=(9, 5))
     err_idx = np.unique(np.linspace(0, len(grid) - 1,
                                     min(args.err_points, len(grid))).astype(int))
 
-    for row in range(mat_m.shape[0]):
-        ax.plot(grid, mat_m[row], color="0.75", lw=0.6, zorder=1)
+    for row in range(mat.shape[0]):
+        ax.plot(grid, mat[row], color="0.75", lw=0.6, zorder=1)
     ax.plot(grid, mean_m, color="black", lw=1.6, zorder=3, label=f"mean (n={len(blocks)})")
     ax.errorbar(grid[err_idx], mean_m[err_idx], yerr=sem_m[err_idx], fmt="none",
                ecolor="crimson", elinewidth=1.2, capsize=3, zorder=4, label="± SEM")
     ax.axhline(0, color="gray", lw=0.6, ls=":")
     ax.set_ylabel("Δ methane (ppm, rel. to ramp start)")
-    ax.set_title(f"{os.path.basename(args.tarball)} — {len(blocks)} ramp instances ({dirn})")
+    ax.set_xlabel("seconds from ramp start")
+    title = f"{os.path.basename(args.tarball)} — {len(blocks)} ramp instances ({dirn})"
+    if outliers:
+        title += f", {len(outliers)} excluded"
+    ax.set_title(title)
     ax.legend(loc="upper left", framealpha=0.9)
-
-    for row in range(mat_f.shape[0]):
-        axf.plot(grid, mat_f[row], color="0.75", lw=0.6, zorder=1)
-    axf.plot(grid, mean_f, color="#2A6F97", lw=1.6, zorder=3)
-    axf.errorbar(grid[err_idx], mean_f[err_idx], yerr=sem_f[err_idx], fmt="none",
-                ecolor="crimson", elinewidth=1.2, capsize=3, zorder=4)
-    axf.set_ylabel("quads on / total")
-    axf.set_xlabel("seconds from ramp start")
-    axf.set_ylim(-0.05, 1.05)
 
     fig.tight_layout()
     if args.out:

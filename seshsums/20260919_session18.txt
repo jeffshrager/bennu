@@ -48,3 +48,19 @@ Later in session:
   covered tail. Confirmed the synthetic (no-quad-events) tarball and
   --direction down give clean error messages rather than crashing.
 - Committed and pushed.
+
+Later same day (2026-09-23):
+- User reported the ramp-plot x-axis showed numbers in the thousands, asked
+  if units were ms. Investigated: seconds were correct; the real cause was
+  one outlier "ramp" block per tarball running ~130,191s (~36h/2170min),
+  almost certainly a quad stuck partially on after a silent reboot, which
+  stretched the shared time grid out to the length of that one instance and
+  squeezed the real ~90-100s ramps into a sliver near zero.
+- lamp_ramp_plot.py: added split_outliers() -- blocks longer than
+  --outlier-factor (default 5x) the MEDIAN duration are excluded from the
+  overlay and reported separately (count + durations) rather than plotted.
+  Also dropped the quads-on-fraction panel per user request ("we only need
+  the methane data") -- single-panel plot now.
+- Verified on lclogs_202609190503.tar.gz: 190 instances overlaid (1 outlier,
+  2170 min, excluded and reported), axis back to a normal 0-100s range.
+- Committed and pushed.
