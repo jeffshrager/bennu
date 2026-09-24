@@ -13,12 +13,15 @@ instances are overlaid on one axis. The mean across instances is drawn
 with standard-error bars.
 
 A handful of "ramp" blocks run far longer than a normal staged power-up
-(hours instead of ~100 s) -- almost certainly a quad stuck partially on,
-e.g. after a silent reboot, not a real ramp. These would otherwise stretch
-the time axis out to the length of the longest one and swamp the real
-ramps into a sliver near zero. Blocks longer than --outlier-factor times
-the median duration (default 5x) are excluded from the overlay and
-reported separately instead.
+(hours instead of ~100 s): a silent reboot partway through a ramp-up
+interrupts it, and since the reboot itself isn't logged, the partial-quad
+state just sits there in the log until the system comes back up and the
+next real quad transition arrives, however much later that is. These
+aren't real ramps and would otherwise stretch the time axis out to the
+length of the longest one, swamping the real ramps into a sliver near
+zero. Blocks longer than --outlier-factor times the median duration
+(default 5x) are excluded from the overlay and reported separately
+instead.
 
 Usage:
     python3 lamp_ramp_plot.py <logs.tar.gz> [-o out.png]
@@ -121,9 +124,8 @@ def main():
                          "(default: up, i.e. lamps turning on)")
     ap.add_argument("--outlier-factor", type=float, default=5.0,
                     help="exclude ramp blocks longer than this many times "
-                         "the median duration -- a stuck/partial state "
-                         "(e.g. a silent reboot), not a real ramp "
-                         "(default 5)")
+                         "the median duration -- a ramp interrupted by a "
+                         "silent reboot, not a real ramp (default 5)")
     ap.add_argument("--err-points", type=int, default=15,
                     help="number of error-bar markers drawn along the mean "
                          "curve (default 15)")
@@ -169,9 +171,9 @@ def main():
           f"median duration {np.median(durations):.0f}s")
     if outliers:
         odurs = ", ".join(f"{d/60:.0f} min" for _, d in outliers)
-        print(f"Excluded {len(outliers)} outlier stretch(es) as stuck/partial "
-              f"states, not ramps (durations: {odurs}) -- lamp state during "
-              f"these is unverified (e.g. a silent reboot).")
+        print(f"Excluded {len(outliers)} outlier stretch(es), not real ramps "
+              f"(durations: {odurs}) -- likely a silent reboot partway "
+              f"through the ramp-up, with no log marker to show where.")
 
     fig, ax = plt.subplots(figsize=(9, 5))
     err_idx = np.unique(np.linspace(0, len(grid) - 1,
