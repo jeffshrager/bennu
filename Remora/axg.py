@@ -18,6 +18,7 @@ import os
 import random
 import sys
 import threading
+import time
 from collections import deque
 from datetime import datetime
 
@@ -52,6 +53,10 @@ TEST_NOISE_FRACTION = 0.05  # +/- 5% random noise applied to the TEST signal
 
 LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mobile_bennu_logo.png")
 
+LOG_DIR = os.path.expanduser("~/axg")
+LOG_SYNC_INTERVAL = 10.0  # seconds between forced flush+fsync of the raw log
+LOG_COLUMNS = ("timestamp", "packet_id", "error_code", "gas1", "gas2", "temperature_C", "raw_hex")
+
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "axg.json")
 CONFIG_DEFAULTS = {"smooth_window": DEFAULT_SMOOTH_WINDOW, "history": DEFAULT_HISTORY}
 
@@ -82,6 +87,96 @@ def rolling_mean(values, window):
             buf.append(v)
         out.append(sum(buf) / len(buf) if buf else float("nan"))
     return out
+
+
+# ---------------------------------------------------------------------------
+# Raw data log
+# ---------------------------------------------------------------------------
+class RawLog:
+    """
+    Append-only TSV log of every packet received, one file per run:
+    ~/axg/YYYYMMDDHHMM_axg_log.tsv.
+
+    Survives power failure and forced reboot by forcing data to disk
+    (flush + fsync) at most LOG_SYNC_INTERVAL seconds apart, so at most
+    that much data can be lost. Each row is a complete line, so a crash
+    leaves at worst one truncated final line, which readers can discard.
+    """
+
+    def __init__(self, directory=LOG_DIR):
+        os.makedirs(directory, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d%H%M")
+        self.path = os.path.join(directory, f"{stamp}_axg_log.tsv")
+        is_new = not os.path.exists(self.path)
+        # Append rather than truncate, so two starts in the same minute
+        # never destroy the earlier run's data.
+        self._f = open(self.path, "a", encoding="utf-8")
+        self._lock = threading.Lock()
+        self._last_sync = time.monotonic()
+        if is_new:
+            self._f.write("\t".join(LOG_COLUMNS) + "\n")
+        self._sync()
+        # Make the new directory entry itself durable, not just the contents.
+        try:
+            dfd = os.open(directory, os.O_RDONLY)
+            try:
+                os.fsync(dfd)
+            finally:
+                os.close(dfd)
+        except OSError:
+            pass
+
+    def _sync(self):
+        self._f.flush()
+        os.fsync(self._f.fileno())
+        self._last_sync = time.monotonic()
+
+    def write(self, when, packet_id, meas=None, raw=b""):
+        meas = meas or {}
+
+        def fmt(key):
+            v = meas.get(key)
+            return "" if v is None else repr(v)
+
+        row = (
+            when.isoformat(timespec="milliseconds"),
+            packet_id,
+            fmt("error_code"),
+            fmt("gas1"),
+            fmt("gas2"),
+            fmt("temperature_C"),
+            raw.hex(),
+        )
+        with self._lock:
+            if self._f is None:
+                return
+            self._f.write("\t".join(row) + "\n")
+            if time.monotonic() - self._last_sync >= LOG_SYNC_INTERVAL:
+                self._sync()
+
+    def close(self):
+        with self._lock:
+            if self._f is None:
+                return
+            try:
+                self._sync()
+            finally:
+                self._f.close()
+                self._f = None
+
+
+_log = [None]  # the RawLog for this run, set in main()
+
+
+def _log_packet(when, packet_id, meas=None, raw=b""):
+    log = _log[0]
+    if log is None:
+        return
+    try:
+        log.write(when, packet_id, meas, raw)
+    except OSError as e:
+        # A full or vanished disk must not stop the live display.
+        print(f"[warn] Log write failed ({log.path}): {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -117,16 +212,18 @@ def _serial_reader(port, baud):
                 except TimeoutError:
                     continue
 
-            if pkt[1] != ord('M'):
-                continue
-            meas = parse_measurement(pkt)
+            now = datetime.now()
+            meas = parse_measurement(pkt) if pkt[1] == ord('M') else None
+            # Log every valid packet, whatever its type, before any filtering.
+            _log_packet(now, chr(pkt[1]), meas, pkt)
+
             g1 = meas.get("gas1") if meas else None
             if g1 is None:
                 continue
             g2 = meas.get("gas2")
 
             with _lock:
-                _times.append(datetime.now())
+                _times.append(now)
                 _gas1.append(g1)
                 _gas2.append(g2 if g2 is not None else float("nan"))
     except Exception as e:
@@ -226,8 +323,10 @@ def build_gui(config, initial_window=DEFAULT_SMOOTH_WINDOW, initial_history=DEFA
             while not _stop.is_set():
                 base = test_state["value"]
                 noisy = base + random.uniform(-1.0, 1.0) * TEST_NOISE_FRACTION * base
+                now = datetime.now()
+                _log_packet(now, "TEST", {"gas1": noisy})
                 with _lock:
-                    _times.append(datetime.now())
+                    _times.append(now)
                     _gas1.append(noisy)
                     _gas2.append(float("nan"))
                 _stop.wait(TEST_FEED_INTERVAL)
@@ -353,6 +452,12 @@ def main():
                           "slider to set the simulated signal value by hand.")
     args = ap.parse_args()
 
+    try:
+        _log[0] = RawLog()
+        print(f"[info] Logging raw data to {_log[0].path}")
+    except OSError as e:
+        print(f"[warn] Could not create log in {LOG_DIR}: {e} -- continuing without a log")
+
     if args.test:
         print("[info] Test mode: no serial port will be opened; use the TEST signal slider.")
     else:
@@ -360,6 +465,8 @@ def main():
             port = find_serial_port(args.port)
         except Exception as e:
             print(f"[error] {e}")
+            if _log[0]:
+                _log[0].close()
             sys.exit(1)
         print(f"[info] Using port {port} @ {args.baud} bps")
 
@@ -380,6 +487,8 @@ def main():
         plt.show()
     finally:
         _stop.set()
+        if _log[0]:
+            _log[0].close()
 
 
 if __name__ == "__main__":
