@@ -1,5 +1,4 @@
-#Updated by Jeff on 20260914
-
+#Updated by Jeff on 20261120
 ************************************************
 *** IMPORTANT NOTES:
 ************************************************
@@ -7,6 +6,19 @@ Chronjob reboot now at 6pm (I think it's on PDT)
 MAKE SURE YOU COPY A NEW RUN.SH WITH IMPROVED LOGGING NOTES NEXT TIME YOU RUN!
 ************************************************
 
+************************************************ How to get to a pi on
+the local wifi (in the lab) and move things on and off it:
+
+- FUCK FUCK FUCK: Put both the Pi and your mac on your phone's hotspot -- yes, really!
+- Open a bash on the pi and do: hostname -I
+- Note the ip address
+- make sure ssh is open: sudo raspi-config and under interface options enable ssh
+To login:
+- ssh -v bennu@172.20.10.8
+Tp copy from mac to pi:
+- scp ~/Desktop/bluedot/remora_repo/Remora/axg.py bennu@172.20.10.8:
+- That'll put it in the top dir -- copy to whereever you need it (usually bennu/)
+************************************************
 # Update ship-tracking db and push it
 cd ~/Desktop/bluedot/remora_repo/shiptrack
 # Use: https://www.marinetraffic.com/en/ais/details/ships/shipid:5261520
