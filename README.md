@@ -5,9 +5,8 @@
 Chronjob reboot now at 6pm (I think it's on PDT)
 MAKE SURE YOU COPY A NEW RUN.SH WITH IMPROVED LOGGING NOTES NEXT TIME YOU RUN!
 ************************************************
-
-************************************************ How to get to a pi on
-the local wifi (in the lab) and move things on and off it:
+==================================================
+How to get to a pi on the local wifi (in the lab) and move things on and off it:
 
 - FUCK FUCK FUCK: Put both the Pi and your mac on your phone's hotspot -- yes, really!
 - Open a bash on the pi and do: hostname -I
@@ -15,9 +14,14 @@ the local wifi (in the lab) and move things on and off it:
 - make sure ssh is open: sudo raspi-config and under interface options enable ssh
 To login:
 - ssh -v bennu@172.20.10.8
-Tp copy from mac to pi:
+bennu password is "bennu"
+To copy from mac to pi:
 - scp ~/Desktop/bluedot/remora_repo/Remora/axg.py bennu@172.20.10.8:
 - That'll put it in the top dir -- copy to whereever you need it (usually bennu/)
+To get ax data logs created by axg.py (demo unit):
+- scp "bennu@172.20.10.8:axg/*"  <wherever you want it here>
+bennu password is "bennu"
+
 ************************************************
 # Update ship-tracking db and push it
 cd ~/Desktop/bluedot/remora_repo/shiptrack
